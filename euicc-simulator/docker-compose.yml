@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  euicc-simulator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: euicc-simulator
+    ports:
+      - "8100:8100"
+    environment:
+      - EUICC_CERTS_DIR=/app/certs
+      - SMDP_ADDRESS=smdpplus.connectxiot.com
+      - EIM_FQDN=eim.connectxiot.com
+      - CREATE_TEST_DATA=true
+    volumes:
+      - euicc-certs:/app/certs
+    restart: unless-stopped
+    networks:
+      - euicc-network
+
+  ipa-simulator:
+    build:
+      context: ../ipa-simulator
+      dockerfile: Dockerfile
+    container_name: ipa-simulator
+    ports:
+      - "8101:8101"
+    environment:
+      - EUICC_SIMULATOR_URL=http://euicc-simulator:8100
+      - EIM_URL=https://eim.connectxiot.com
+      - SMDP_URL=https://smdpplus.connectxiot.com
+    depends_on:
+      - euicc-simulator
+    restart: unless-stopped
+    networks:
+      - euicc-network
+
+volumes:
+  euicc-certs:
+
+networks:
+  euicc-network:
+    driver: bridge
