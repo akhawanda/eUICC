@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from ..clients.euicc_client import EuiccClient
 from ..clients.eim_client import EimClient
+from ..services.asn1_codec import Asn1Codec
 from .profile_download import ProfileDownloadOrchestrator
 
 logger = structlog.get_logger()
@@ -53,6 +54,7 @@ class EsipaHandler:
         self.euicc = euicc
         self.eim = eim
         self.download = download_orchestrator
+        self.codec = Asn1Codec()
         self.sessions: dict[str, EsipaSession] = {}
         self._poll_tasks: dict[str, asyncio.Task] = {}
 
@@ -197,10 +199,15 @@ class EsipaHandler:
         # Relay to eUICC
         result = await self.euicc.load_euicc_package(session.eid, package)
 
+        # DER-encode the result as ProvideEimPackageResult (BF50)
+        result_der = self.codec.encode_euicc_package_result(
+            str(result).encode("utf-8")  # Raw result bytes
+        )
+
         return {
             "status": "euicc_package_processed",
             "result": result,
-            "resultData": "",  # TODO: DER-encode BF50 result
+            "resultData": result_der,
             "sendResult": True,
         }
 
@@ -217,6 +224,50 @@ class EsipaHandler:
         profiles = await self.euicc.get_profiles_info(session.eid)
         eim_config = await self.euicc.get_eim_config(session.eid)
         eid_response = await self.euicc.get_eid(session.eid)
+        certs = await self.euicc.get_certs(session.eid)
+
+        # Build profile list for ASN.1 encoding
+        profile_list = []
+        for p in profiles.get("profileInfoListOk", []):
+            pi = {}
+            if "iccid" in p:
+                pi["iccid"] = bytes.fromhex(p["iccid"]) if isinstance(p["iccid"], str) else p["iccid"]
+            if "profileState" in p:
+                pi["profileState"] = p["profileState"]
+            if "profileName" in p:
+                pi["profileName"] = p["profileName"]
+            if "serviceProviderName" in p:
+                pi["serviceProviderName"] = p["serviceProviderName"]
+            if "profileClass" in p:
+                pi["profileClass"] = p["profileClass"]
+            profile_list.append(pi)
+
+        # Build eIM config list for ASN.1 encoding
+        eim_list = []
+        for c in eim_config.get("eimConfigurationDataList", []):
+            ec = {"eimId": c["eimId"]}
+            if "eimFqdn" in c and c["eimFqdn"]:
+                ec["eimFqdn"] = c["eimFqdn"]
+            if "counterValue" in c:
+                ec["counterValue"] = c["counterValue"]
+            if "associationToken" in c:
+                ec["associationToken"] = c["associationToken"]
+            eim_list.append(ec)
+
+        # DER-encode as IpaEuiccDataResponse (BF52)
+        eid_bytes = bytes.fromhex(eid_response.get("eid", "")) if isinstance(eid_response.get("eid"), str) else eid_response.get("eid", b"")
+
+        import base64
+        eum_cert = base64.b64decode(certs.get("eumCertificate", "")) if certs.get("eumCertificate") else None
+        euicc_cert = base64.b64decode(certs.get("euiccCertificate", "")) if certs.get("euiccCertificate") else None
+
+        result_der = self.codec.encode_ipa_euicc_data_response(
+            eid=eid_bytes,
+            profiles=profile_list,
+            eim_configs=eim_list,
+            eum_cert=eum_cert,
+            euicc_cert=euicc_cert,
+        )
 
         return {
             "status": "data_collected",
@@ -225,7 +276,7 @@ class EsipaHandler:
                 "profiles": profiles,
                 "eimConfig": eim_config,
             },
-            "resultData": "",  # TODO: DER-encode BF52 response
+            "resultData": result_der,
             "sendResult": True,
         }
 
@@ -259,11 +310,20 @@ class EsipaHandler:
             activation_code=activation_code,
         )
 
+        # DER-encode as ProfileDownloadTriggerResult (BF54)
+        eim_txn_id = trigger.get("eimTransactionId")
+        error_code = None if download_session.state.value == "profile_installed" else 1
+
+        result_der = self.codec.encode_profile_download_trigger_result(
+            eim_transaction_id=eim_txn_id,
+            error_code=error_code,
+        )
+
         return {
             "status": download_session.state.value,
             "steps": download_session.steps,
             "result": download_session.result,
             "error": download_session.error,
-            "resultData": "",  # TODO: DER-encode BF54 result
+            "resultData": result_der,
             "sendResult": True,
         }
