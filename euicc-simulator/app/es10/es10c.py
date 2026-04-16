@@ -13,7 +13,7 @@ Implements the eUICC side of ES10c per SGP.22 §5.6:
 
 import structlog
 
-from ..models.euicc import EuiccState, ProfileState
+from ..models.euicc import EuiccState, ProfileState, ProfileClass
 from ..crypto.certificates import CertificateInfrastructure
 from ..crypto.ecdsa_engine import EcdsaEngine
 

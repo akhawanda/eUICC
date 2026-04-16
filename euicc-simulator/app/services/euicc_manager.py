@@ -144,6 +144,29 @@ class EuiccManager:
             })
         return result
 
+    def create_euicc_from_state(self, euicc: EuiccState) -> EuiccInstance:
+        """
+        Create an eUICC instance from a pre-populated state object.
+        Used when loading persisted state from database.
+        """
+        if euicc.eid in self.instances:
+            return self.instances[euicc.eid]
+
+        certs_dir = self.base_certs_dir / euicc.eid
+        pki = CertificateInfrastructure(certs_dir)
+        pki.initialize(euicc.eid)
+
+        instance = EuiccInstance(euicc, pki)
+        self.instances[euicc.eid] = instance
+
+        logger.info(
+            "euicc_loaded",
+            eid=euicc.eid,
+            profiles=len(euicc.profiles),
+            eim_associations=len(euicc.eim_associations),
+        )
+        return instance
+
     def delete_euicc(self, eid: str) -> bool:
         """Remove a virtual eUICC instance."""
         if eid in self.instances:

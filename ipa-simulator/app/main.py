@@ -10,8 +10,6 @@ IoT Profile Assistant simulator implementing:
 Server: euicc.connectxiot.com (shared with eUICC simulator)
 """
 
-import os
-from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 from .api.routes import router, set_orchestrators
+from .config import settings
 from .clients.euicc_client import EuiccClient
 from .clients.eim_client import EimClient
 from .clients.smdp_client import SmdpClient
@@ -41,19 +40,14 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-# Configuration
-EUICC_URL = os.getenv("EUICC_SIMULATOR_URL", "http://localhost:8100")
-EIM_URL = os.getenv("EIM_URL", "https://eim.connectxiot.com")
-SMDP_URL = os.getenv("SMDP_URL", "https://smdpplus.connectxiot.com")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize clients and orchestrators on startup."""
     # Create clients
-    euicc_client = EuiccClient(EUICC_URL)
-    eim_client = EimClient(EIM_URL)
-    smdp_client = SmdpClient(SMDP_URL)
+    euicc_client = EuiccClient(settings.euicc_simulator_url)
+    eim_client = EimClient(settings.eim_url)
+    smdp_client = SmdpClient(settings.smdp_url)
 
     # Create orchestrators
     dl = ProfileDownloadOrchestrator(euicc_client, smdp_client)
@@ -63,9 +57,9 @@ async def lifespan(app: FastAPI):
 
     logger.info(
         "startup_complete",
-        euicc_url=EUICC_URL,
-        eim_url=EIM_URL,
-        smdp_url=SMDP_URL,
+        euicc_url=settings.euicc_simulator_url,
+        eim_url=settings.eim_url,
+        smdp_url=settings.smdp_url,
     )
 
     yield
@@ -119,9 +113,9 @@ async def root():
             "ES10": "IPA <-> eUICC (via eUICC simulator)",
         },
         "endpoints": {
-            "eIM": EIM_URL,
-            "SM-DP+": SMDP_URL,
-            "eUICC": EUICC_URL,
+            "eIM": settings.eim_url,
+            "SM-DP+": settings.smdp_url,
+            "eUICC": settings.euicc_simulator_url,
         },
         "docs": "/api/docs",
     }

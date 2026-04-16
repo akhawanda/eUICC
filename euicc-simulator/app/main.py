@@ -7,7 +7,6 @@ per GSMA SGP.22 v3.1 and SGP.32 v1.2.
 Server: euicc.connectxiot.com
 """
 
-import os
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -16,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 from .api.routes import router, set_manager
+from .config import settings
 from .services.euicc_manager import EuiccManager
 
 # Configure structured logging
@@ -34,31 +34,35 @@ structlog.configure(
 
 logger = structlog.get_logger()
 
-# Configuration
-BASE_DIR = Path(__file__).parent.parent
-CERTS_DIR = Path(os.getenv("EUICC_CERTS_DIR", str(BASE_DIR / "certs")))
-SMDP_ADDRESS = os.getenv("SMDP_ADDRESS", "smdpplus.connectxiot.com")
-EIM_FQDN = os.getenv("EIM_FQDN", "eim.connectxiot.com")
-CREATE_TEST_DATA = os.getenv("CREATE_TEST_DATA", "true").lower() == "true"
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize eUICC manager and test data on startup."""
-    mgr = EuiccManager(CERTS_DIR)
+    """Initialize eUICC manager, database, and test data on startup."""
+    from .models.database import init_db
+    await init_db(settings.database_url)
+
+    mgr = EuiccManager(Path(settings.euicc_certs_dir))
     set_manager(mgr)
 
-    if CREATE_TEST_DATA:
-        mgr.create_test_euiccs(SMDP_ADDRESS, EIM_FQDN)
-        logger.info(
-            "startup_complete",
-            euiccs=len(mgr.instances),
-            smdp=SMDP_ADDRESS,
-            eim=EIM_FQDN,
-        )
+    # Load persisted eUICCs from database
+    from .models.database import load_persisted_euiccs
+    await load_persisted_euiccs(mgr)
+
+    if settings.create_test_data and not mgr.instances:
+        mgr.create_test_euiccs(settings.smdp_address, settings.eim_fqdn)
+
+    logger.info(
+        "startup_complete",
+        euiccs=len(mgr.instances),
+        smdp=settings.smdp_address,
+        eim=settings.eim_fqdn,
+    )
 
     yield
 
+    # Persist state before shutdown
+    from .models.database import persist_euiccs
+    await persist_euiccs(mgr)
     logger.info("shutdown")
 
 

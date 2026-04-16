@@ -27,6 +27,7 @@ from ..models.euicc import (
 from ..crypto.certificates import CertificateInfrastructure
 from ..crypto.ecdsa_engine import EcdsaEngine, SessionKeys
 from ..crypto.scp03t import Scp03tProcessor
+from ..crypto.cert_validator import CertChainValidator
 from ..services.asn1_codec import Asn1Codec
 
 logger = structlog.get_logger()
@@ -49,6 +50,7 @@ class Es10bHandler:
         self.pki = pki
         self.ecdsa = EcdsaEngine()
         self.codec = Asn1Codec()
+        self.cert_validator = CertChainValidator([pki.ci.certificate])
 
     # ------------------------------------------------------------------
     # GetEuiccInfo1 (BF20)
@@ -169,16 +171,18 @@ class Es10bHandler:
                 server_signed1.get("transactionId", b"\x00" * 16), 3
             )
 
-        # Step 2: Verify server certificate
-        try:
-            server_cert = x509.load_der_x509_certificate(server_certificate_der)
-            # In production, full chain validation against CI root
-            # For simulator, verify it's a valid X.509 cert
-            server_public_key = server_cert.public_key()
-        except Exception as e:
-            logger.error("invalid_server_certificate", error=str(e))
+        # Step 2: Validate server certificate chain against CI root
+        is_valid, error_msg, server_public_key = self.cert_validator.validate_server_cert(
+            server_certificate_der, euicc_ci_pkid
+        )
+        if not is_valid:
+            logger.warning("server_cert_validation_failed", error=error_msg)
+            # Map error to appropriate code
+            error_code = 6  # invalidCertificate
+            if "expired" in error_msg.lower():
+                error_code = 4  # expiredCertificate
             return self._auth_error(
-                server_signed1.get("transactionId", b"\x00" * 16), 6
+                server_signed1.get("transactionId", b"\x00" * 16), error_code
             )
 
         # Step 3: Verify server signature using canonical DER encoding
