@@ -1,4 +1,6 @@
-<x-layouts.app :title="'Dashboard'" :header="'Dashboard'">
+@extends('layouts.app', ['title' => 'Dashboard', 'header' => 'Dashboard'])
+
+@section('content')
     <div class="grid gap-4 md:grid-cols-3">
         <a href="{{ route('devices.index') }}" class="rounded-lg border border-slate-200 bg-white p-5 hover:border-indigo-300 hover:shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <div class="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Devices</div>
@@ -26,4 +28,4 @@
           ├─ /api/es10/* ─► 127.0.0.1:8100 (eUICC simulator)
           └─ /api/ipa/*  ─► 127.0.0.1:8101 (IPA simulator)</pre>
     </div>
-</x-layouts.app>
+@endsection
