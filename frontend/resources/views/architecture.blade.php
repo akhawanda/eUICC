@@ -145,7 +145,85 @@ sequenceDiagram
         </section>
 
         {{-- ====================================================== --}}
-        {{-- 4. Where each piece lives                              --}}
+        {{-- 4. Message-level ESipa poll (actual wire shapes)       --}}
+        {{-- ====================================================== --}}
+        <section class="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
+            <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
+                ESipa poll — wire-level message detail
+            </h2>
+            <p class="mb-4 text-xs text-slate-500">
+                Exact JSON field names, ASN.1 tags and DER hex for each hop of
+                <code>Retrieve eIM Package</code>. Tag notation uses GSMA
+                SGP.32 convention (BFxx = context-specific long-form
+                constructed). Lengths omitted for clarity.
+            </p>
+            <pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant LAR as Laravel Console
+    participant IPA
+    participant EIM
+    participant EU as eUICC sim
+
+    Note over LAR,IPA: HTTP/JSON (loopback)
+    LAR->>IPA: POST /api/ipa/devices<br/>{eid, eimId, eimFqdn, pollInterval}
+    LAR->>IPA: POST /api/ipa/esipa/{eid}/poll-once
+
+    Note over IPA,EIM: HTTPS / JSON
+    IPA->>EIM: POST /gsma/rsp2/esipa/getEimPackage<br/>{ "eidValue": "263B5184…F3CA8" }
+
+    alt queue has a scan request (what we hit today)
+        EIM-->>IPA: 200 { "ipaEuiccDataRequest": {...} }
+        IPA->>EU: GET /api/es10/{eid}/eid           ←  5A &lt;eid&gt;
+        IPA->>EU: GET /api/es10/{eid}/profiles      ←  A0 profileInfoListOk
+        IPA->>EU: GET /api/es10/{eid}/eim-config    ←  80 eimId  81 eimFqdn
+        IPA->>EU: GET /api/es10/{eid}/certs         ←  EUM + eUICC X.509
+
+        Note right of IPA: build DER:<br/>BF50 ─ [80] EXPLICIT<br/>  BF52 ─ [82] ipaEuiccDataResponse<br/>    80 eid<br/>    A2 eimConfigurationDataList<br/>    83 eumCertificate<br/>    84 euiccCertificate
+        IPA->>EIM: POST /gsma/rsp2/esipa/provideEimPackageResult<br/>{ "provideEimPackageResult": "BF508204C3BF528204BE…" }
+        EIM-->>IPA: 200 { "header": { "functionExecutionStatus": { "status": "Executed-Success" } } }
+
+    else queue has a profile download trigger
+        EIM-->>IPA: 200 { "profileDownloadTriggerRequest": { "smdpAddress", "matchingId", "eimTransactionId" } }
+        Note over IPA,EU: runs full SGP.22 ES9+/ES10b dance
+        IPA->>EIM: provideEimPackageResult<br/>BF50 > BF54 profileDownloadTriggerResult<br/>  {eimTransactionId, errorCode}
+
+    else queue has a PSMO / eCO
+        EIM-->>IPA: 200 { "euiccPackageRequest": {...} }
+        IPA->>EU: ES10b EuiccPackage (ESep relay over APDU)
+        EU-->>IPA: euiccPackageResult (signed)
+        IPA->>EIM: provideEimPackageResult<br/>BF50 > BF51 euiccPackageResult
+
+    else queue empty
+        EIM-->>IPA: 200 { "eimPackageError": 1 }   ← noEimPackageAvailable
+        Note right of IPA: IPA returns {status: no_package}<br/>to Laravel — no followup
+    end
+            </pre>
+
+            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <div class="rounded border border-amber-200 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-950">
+                    <b class="block text-amber-700 dark:text-amber-300">ASN.1 pitfalls we hit</b>
+                    <ul class="mt-2 list-disc pl-4 space-y-1">
+                        <li>eIM expects JSON field <code>eidValue</code>, not <code>eid</code>.</li>
+                        <li>eIM expects JSON field <code>provideEimPackageResult</code>, not <code>provideEimPackageResultData</code>.</li>
+                        <li><code>ProvideEimPackageResult</code> is <code>[80] EXPLICIT CHOICE</code> — outer bytes must be <code>BF 50</code>.</li>
+                        <li>Inner alternatives are <code>[81]</code>–<code>[84]</code> (→ <code>BF51</code>–<code>BF54</code>), not <code>[0]</code>–<code>[3]</code> (→ <code>A0</code>–<code>A3</code>).</li>
+                    </ul>
+                </div>
+
+                <div class="rounded border border-sky-200 bg-sky-50 p-3 text-xs dark:border-sky-800 dark:bg-sky-950">
+                    <b class="block text-sky-700 dark:text-sky-300">If the eIM returns <code>{eimPackageError: 1}</code></b>
+                    <ul class="mt-2 list-disc pl-4 space-y-1">
+                        <li>The EID matched a device in eIM DB (or we'd see <code>error: 2</code>).</li>
+                        <li>But <code>eim_package_queue</code> has no <code>queued</code>/<code>in_progress</code> rows for that device_id — verify on the eIM dashboard.</li>
+                        <li>If the queue has rows for a different enterprise/tenant than the device's association, eIM will not match them.</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        {{-- ====================================================== --}}
+        {{-- 5. Where each piece lives                              --}}
         {{-- ====================================================== --}}
         <section class="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-900">
             <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-slate-500">
