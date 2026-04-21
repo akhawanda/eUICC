@@ -258,15 +258,48 @@ class EsipaHandler:
         Handle ipaEuiccDataRequest — collect eUICC data for eIM.
 
         The eIM wants to scan this eUICC's current state:
-        profiles, eIM configs, certificates.
+        profiles, eIM configs, certificates.  If the eUICC sim
+        doesn't know this EID (e.g. the device was created in Laravel
+        but never pushed to the sim), surface a clear error instead
+        of letting httpx crash with 500 out of the FastAPI route.
         """
+        import httpx
         logger.info("euicc_data_requested", eid=session.eid)
 
-        # Collect data from eUICC
-        profiles = await self.euicc.get_profiles_info(session.eid)
-        eim_config = await self.euicc.get_eim_config(session.eid)
-        eid_response = await self.euicc.get_eid(session.eid)
-        certs = await self.euicc.get_certs(session.eid)
+        try:
+            # Collect data from eUICC
+            profiles = await self.euicc.get_profiles_info(session.eid)
+            eim_config = await self.euicc.get_eim_config(session.eid)
+            eid_response = await self.euicc.get_eid(session.eid)
+            certs = await self.euicc.get_certs(session.eid)
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "euicc_unreachable_for_data_request",
+                eid=session.eid,
+                status=e.response.status_code,
+                url=str(e.request.url),
+            )
+            return {
+                "status": "euicc_unreachable",
+                "httpStatus": e.response.status_code,
+                "url": str(e.request.url),
+                "hint": (
+                    "The eUICC simulator has no instance for this EID. "
+                    "Either push the device from the Laravel UI (Device → "
+                    "'Push to eUICC simulator') or restart euicc-sim so "
+                    "it reseeds from Laravel."
+                ),
+                "sendResult": False,
+            }
+        except httpx.RequestError as e:
+            logger.warning("euicc_request_error", eid=session.eid, error=str(e))
+            return {
+                "status": "euicc_unreachable",
+                "httpStatus": 0,
+                "url": str(getattr(e.request, "url", "")),
+                "hint": f"Network error talking to eUICC sim: {e}",
+                "sendResult": False,
+            }
 
         # Build profile list for ASN.1 encoding
         profile_list = []

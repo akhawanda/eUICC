@@ -21,7 +21,7 @@ class SeedController
         return response()->json([
             'generated_at' => now()->toIso8601String(),
             'count' => $devices->count(),
-            'devices' => $devices->map->toSimulatorPayload()->values()->all(),
+            'devices' => $devices->map->toSeedPayload()->values()->all(),
         ]);
     }
 }

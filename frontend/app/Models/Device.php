@@ -33,7 +33,37 @@ class Device extends Model
         return $this->hasMany(DevicePreloadedProfile::class);
     }
 
+    /**
+     * Payload for POST /api/management/euicc on the eUICC sim.
+     * Only the first eIM association is passed at create time —
+     * the sim's create_euicc() signature accepts a single eIM. If
+     * the device has multiple associations, the rest will need a
+     * separate add-eim call (not wired yet).
+     */
     public function toSimulatorPayload(): array
+    {
+        $firstEim = $this->eimAssociations->first();
+
+        return [
+            'eid' => $this->eid,
+            'defaultSmdpAddress' => $this->default_smdp_address ?? '',
+            'eimId' => $firstEim?->eim_id,
+            'eimFqdn' => $firstEim?->eim_fqdn,
+            'preloadedProfiles' => $this->preloadedProfiles->map(fn ($p) => [
+                'iccid' => $p->iccid,
+                'name' => $p->name,
+                'spName' => $p->sp_name,
+                'state' => $p->state,
+                'class' => $p->class,
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Payload for Laravel's /api/seed (consumed by sim's
+     * laravel_seeder.py — uses snake_case per its Python idiom).
+     */
+    public function toSeedPayload(): array
     {
         return [
             'eid' => $this->eid,

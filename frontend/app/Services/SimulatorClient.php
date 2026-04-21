@@ -45,7 +45,7 @@ class SimulatorClient
     public function pushDevice(Device $device): array
     {
         $resp = Http::timeout(config('simulators.euicc.timeout'))
-            ->post($this->euiccBase().'/api/v1/euicc/create', $device->toSimulatorPayload());
+            ->post($this->euiccBase().'/api/management/euicc', $device->toSimulatorPayload());
 
         return ['ok' => $resp->successful(), 'status' => $resp->status(), 'body' => $resp->json() ?? $resp->body()];
     }
@@ -53,7 +53,7 @@ class SimulatorClient
     public function deleteDevice(string $eid): array
     {
         $resp = Http::timeout(config('simulators.euicc.timeout'))
-            ->delete($this->euiccBase()."/api/v1/euicc/$eid");
+            ->delete($this->euiccBase()."/api/management/euicc/$eid");
 
         return ['ok' => $resp->successful(), 'status' => $resp->status(), 'body' => $resp->json() ?? $resp->body()];
     }
