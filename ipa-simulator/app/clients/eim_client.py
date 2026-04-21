@@ -108,7 +108,7 @@ class EimClient:
         return await self._try_paths(
             base=self._base(base_url),
             paths=["/gsma/rsp2/esipa/getEimPackage", "/api/eim/v1/getEIMPackage"],
-            json_body={"eid": eid, "eimId": eim_id},
+            json_body={"eidValue": eid},
         )
 
     async def provide_eim_package_result(
@@ -123,7 +123,7 @@ class EimClient:
         return await self._try_paths(
             base=self._base(base_url),
             paths=["/gsma/rsp2/esipa/provideEimPackageResult", "/api/eim/v1/provideEIMPackageResult"],
-            json_body={"eid": eid, "provideEimPackageResultData": result_data},
+            json_body={"provideEimPackageResult": result_data},
         )
 
     async def scan_eim(self, eid: str, base_url: str | None = None) -> dict:
