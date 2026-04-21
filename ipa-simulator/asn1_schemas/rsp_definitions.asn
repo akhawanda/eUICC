@@ -518,15 +518,18 @@ ProfileDownloadTriggerRequest ::= SEQUENCE {
     eimTransactionId    [3] TransactionId OPTIONAL
 }
 
--- ProvideEimPackageResult (BF50 = [80] CONTEXT-SPECIFIC CONSTRUCTED)
--- The outer [80] EXPLICIT wrapper is what produces the BF50 tag on the
--- wire; without it asn1tools emits only the chosen alternative (A0/A1/...)
--- and the eIM Go decoder rejects with "expected BF50, got A1...".
+-- ProvideEimPackageResult wire format per SGP.32:
+--   Outer envelope: BF50 ([80] CONTEXT-SPECIFIC CONSTRUCTED)
+--   Inner alternatives: BF51..BF54 (tag numbers 81..84)
+-- i.e. each CHOICE alternative has its OWN application tag on the wire,
+-- not the short-form [0]/[1]/[2]/[3] -> A0/A1/A2/A3 that asn1tools emits
+-- when you use small tag numbers. The eIM Go decoder matches explicit
+-- 0xBF 0x5N sequences.
 ProvideEimPackageResult ::= [80] EXPLICIT CHOICE {
-    euiccPackageResult              [0] EuiccPackageResult,
-    ipaEuiccDataResponse            [1] IpaEuiccDataResponse,
-    eimAcknowledgements             [2] EimAcknowledgements,
-    profileDownloadTriggerResult    [3] ProfileDownloadTriggerResult
+    euiccPackageResult              [81] EuiccPackageResult,
+    ipaEuiccDataResponse            [82] IpaEuiccDataResponse,
+    eimAcknowledgements             [83] EimAcknowledgements,
+    profileDownloadTriggerResult    [84] ProfileDownloadTriggerResult
 }
 
 EuiccPackageResult ::= SEQUENCE {

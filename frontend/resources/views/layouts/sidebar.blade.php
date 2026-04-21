@@ -3,6 +3,7 @@
         ['label' => 'Dashboard',      'route' => 'dashboard',      'icon' => 'home'],
         ['label' => 'Devices',        'route' => 'devices.index',  'icon' => 'cpu'],
         ['label' => 'IPA Console',    'route' => 'ipa.console',    'icon' => 'terminal'],
+        ['label' => 'Architecture',   'route' => 'architecture',   'icon' => 'diagram'],
         ['label' => 'Server Status',  'route' => 'server.status',  'icon' => 'activity'],
     ];
 @endphp

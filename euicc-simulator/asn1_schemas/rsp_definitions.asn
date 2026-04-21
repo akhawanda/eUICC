@@ -518,13 +518,14 @@ ProfileDownloadTriggerRequest ::= SEQUENCE {
     eimTransactionId    [3] TransactionId OPTIONAL
 }
 
--- ProvideEimPackageResult (BF50 = [80] CONTEXT-SPECIFIC CONSTRUCTED)
--- Outer [80] EXPLICIT produces the BF50 tag on the wire per SGP.32.
+-- ProvideEimPackageResult wire format per SGP.32:
+--   Outer envelope:    BF50 ([80] CONTEXT-SPECIFIC CONSTRUCTED)
+--   Inner alternatives: BF51..BF54 (tag numbers 81..84)
 ProvideEimPackageResult ::= [80] EXPLICIT CHOICE {
-    euiccPackageResult              [0] EuiccPackageResult,
-    ipaEuiccDataResponse            [1] IpaEuiccDataResponse,
-    eimAcknowledgements             [2] EimAcknowledgements,
-    profileDownloadTriggerResult    [3] ProfileDownloadTriggerResult
+    euiccPackageResult              [81] EuiccPackageResult,
+    ipaEuiccDataResponse            [82] IpaEuiccDataResponse,
+    eimAcknowledgements             [83] EimAcknowledgements,
+    profileDownloadTriggerResult    [84] ProfileDownloadTriggerResult
 }
 
 EuiccPackageResult ::= SEQUENCE {

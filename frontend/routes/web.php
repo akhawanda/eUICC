@@ -19,6 +19,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::get('/ipa-console', IpaConsole::class)->name('ipa.console');
     Route::get('/server-status', ServerStatus::class)->name('server.status');
+    Route::view('/architecture', 'architecture')->name('architecture');
 });
 
 require __DIR__.'/auth.php';
