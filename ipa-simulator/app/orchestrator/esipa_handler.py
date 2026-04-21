@@ -133,12 +133,39 @@ class EsipaHandler:
     async def _process_poll(self, session: EsipaSession) -> dict:
         """
         Execute one poll cycle:
-        1. Call getEimPackage on eIM
+        1. Call getEimPackage on eIM (using the session's eim_fqdn)
         2. Process the response based on type
         3. Return result to eIM
+
+        Transport / HTTP errors from the eIM are surfaced as
+        ``{"status": "eim_unreachable", ...}`` instead of being
+        masked as ``no_package`` — that ambiguity made it impossible
+        to tell whether the eIM really had nothing queued or the
+        IPA simply couldn't reach it.
         """
-        # Step 1: Get package from eIM
-        package = await self.eim.get_eim_package(session.eid, session.eim_id)
+        from ..clients.eim_client import EimFetchError
+
+        # Step 1: Get package from eIM — per-device FQDN
+        try:
+            package = await self.eim.get_eim_package(
+                session.eid,
+                session.eim_id,
+                base_url=session.eim_fqdn,
+            )
+        except EimFetchError as e:
+            logger.warning(
+                "eim_unreachable",
+                eid=session.eid,
+                eim=session.eim_fqdn,
+                status=e.status,
+                url=e.url,
+            )
+            return {
+                "status": "eim_unreachable",
+                "httpStatus": e.status,
+                "url": e.url,
+                "eimBody": e.body[:500],
+            }
 
         # Check for no-package or error
         if "eimPackageError" in package:
@@ -154,10 +181,25 @@ class EsipaHandler:
         if result.get("sendResult", True):
             result_data = result.get("resultData", "")
             if result_data:
-                eim_response = await self.eim.provide_eim_package_result(
-                    session.eid, result_data
-                )
-                result["eimResponse"] = eim_response
+                try:
+                    eim_response = await self.eim.provide_eim_package_result(
+                        session.eid,
+                        result_data,
+                        base_url=session.eim_fqdn,
+                    )
+                    result["eimResponse"] = eim_response
+                except EimFetchError as e:
+                    logger.error(
+                        "eim_result_send_failed",
+                        eid=session.eid,
+                        status=e.status,
+                        url=e.url,
+                    )
+                    result["eimResponse"] = {
+                        "error": "eim_unreachable",
+                        "httpStatus": e.status,
+                        "url": e.url,
+                    }
 
         session.last_result = result
         session.operations_processed += 1
