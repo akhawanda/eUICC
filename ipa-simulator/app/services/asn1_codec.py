@@ -5,6 +5,8 @@ Provides encoding of ESipa result messages (BF50/BF52/BF54)
 that the IPA sends back to the eIM server.
 """
 
+from __future__ import annotations
+
 import base64
 from pathlib import Path
 from functools import lru_cache

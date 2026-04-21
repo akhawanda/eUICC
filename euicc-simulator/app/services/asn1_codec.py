@@ -9,6 +9,8 @@ canonical DER encoding, which is required for ECDSA signatures
 to be interoperable with real SM-DP+ and eIM servers.
 """
 
+from __future__ import annotations
+
 import base64
 from pathlib import Path
 from functools import lru_cache
