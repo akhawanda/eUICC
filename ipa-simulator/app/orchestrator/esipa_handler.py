@@ -225,32 +225,81 @@ class EsipaHandler:
 
         return {"status": "unknown_package_type", "sendResult": False}
 
-    async def _handle_euicc_package(self, session: EsipaSession, package: dict) -> dict:
+    async def _handle_euicc_package(self, session: EsipaSession, package) -> dict:
         """
         Handle euiccPackageRequest — relay PSMO/eCO to eUICC via ES10.
 
         This is the ESep relay: eIM -> IPA (ESipa) -> eUICC (ES10b).
-        """
-        logger.info(
-            "esep_relay",
-            eid=session.eid,
-            psmo_count=len(package.get("psmoList", [])),
-            eco_count=len(package.get("ecoList", [])),
-        )
 
-        # Relay to eUICC
-        result = await self.euicc.load_euicc_package(session.eid, package)
+        `package` may be either:
+          - a base64-encoded DER blob (GSMA wire shape — eIM sends this)
+          - a decoded dict with {psmoList, ecoList, ...} (for test fixtures)
+        """
+        import base64
+        import httpx
+
+        if isinstance(package, str):
+            # Base64-encoded DER — the GSMA wire format for euiccPackageRequest.
+            logger.info("esep_relay", eid=session.eid, shape="base64", length=len(package))
+            try:
+                der_hex = base64.b64decode(package).hex().upper()
+            except Exception as e:
+                logger.warning("esep_base64_decode_failed", eid=session.eid, error=str(e))
+                return {"status": "invalid_euicc_package", "error": str(e), "sendResult": False}
+            relay_payload = {"euiccPackageRequest": der_hex}
+        elif isinstance(package, dict):
+            logger.info(
+                "esep_relay",
+                eid=session.eid,
+                shape="dict",
+                psmo_count=len(package.get("psmoList", [])),
+                eco_count=len(package.get("ecoList", [])),
+            )
+            relay_payload = package
+        else:
+            return {
+                "status": "invalid_euicc_package",
+                "error": f"unexpected euiccPackageRequest type: {type(package).__name__}",
+                "sendResult": False,
+            }
+
+        try:
+            result = await self.euicc.load_euicc_package(session.eid, relay_payload)
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                "euicc_relay_failed",
+                eid=session.eid,
+                status=e.response.status_code,
+                url=str(e.request.url),
+            )
+            return {
+                "status": "euicc_unreachable",
+                "httpStatus": e.response.status_code,
+                "url": str(e.request.url),
+                "sendResult": False,
+            }
+        except httpx.RequestError as e:
+            return {
+                "status": "euicc_unreachable",
+                "httpStatus": 0,
+                "error": str(e),
+                "sendResult": False,
+            }
 
         # DER-encode the result as ProvideEimPackageResult (BF50)
-        result_der = self.codec.encode_euicc_package_result(
-            str(result).encode("utf-8")  # Raw result bytes
-        )
+        try:
+            result_der = self.codec.encode_euicc_package_result(
+                str(result).encode("utf-8")  # Raw result bytes
+            )
+        except Exception as e:
+            logger.warning("esep_result_encode_failed", eid=session.eid, error=str(e))
+            result_der = ""
 
         return {
             "status": "euicc_package_processed",
             "result": result,
             "resultData": result_der,
-            "sendResult": True,
+            "sendResult": bool(result_der),
         }
 
     async def _handle_data_request(self, session: EsipaSession) -> dict:
