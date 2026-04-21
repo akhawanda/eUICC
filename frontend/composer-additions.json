@@ -1,0 +1,10 @@
+{
+    "_comment": "Packages bootstrap.sh adds on top of a fresh laravel/laravel:^12 install",
+    "require": {
+        "livewire/livewire": "^3.5",
+        "guzzlehttp/guzzle": "^7.8"
+    },
+    "require-dev": {
+        "laravel/breeze": "^2.4"
+    }
+}

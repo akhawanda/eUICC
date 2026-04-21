@@ -48,6 +48,15 @@ async def lifespan(app: FastAPI):
     from .models.database import load_persisted_euiccs
     await load_persisted_euiccs(mgr)
 
+    # Re-hydrate from Laravel (source of truth) — adds any devices defined in
+    # the dashboard that aren't already in local SQLite. Failure is non-fatal.
+    from .services.laravel_seeder import reseed_from_laravel
+    await reseed_from_laravel(
+        mgr,
+        settings.laravel_seed_url,
+        settings.laravel_seed_token,
+    )
+
     if settings.create_test_data and not mgr.instances:
         mgr.create_test_euiccs(settings.smdp_address, settings.eim_fqdn)
 

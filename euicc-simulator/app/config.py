@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8100
 
+    # Laravel seed endpoint — source of truth for device definitions.
+    # If set, the sim fetches this URL on startup to re-hydrate devices.
+    laravel_seed_url: str = "http://127.0.0.1/api/seed"
+    laravel_seed_token: str = ""
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
