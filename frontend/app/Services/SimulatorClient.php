@@ -59,6 +59,39 @@ class SimulatorClient
     }
 
     /**
+     * Register a device with the IPA simulator (idempotent — a second
+     * POST for the same EID is safe, the IPA sim updates the session).
+     *
+     * Returns an 'ok' result that callers can short-circuit on if the
+     * device has no eIM association yet.
+     */
+    public function registerWithIpa(Device $device, int $pollInterval = 30): array
+    {
+        $eim = $device->eimAssociations->first();
+        if (! $eim) {
+            return [
+                'ok' => false,
+                'status' => 0,
+                'body' => 'Device has no eIM association — add one on the device form before running IPA operations.',
+            ];
+        }
+
+        $resp = Http::timeout(config('simulators.ipa.timeout'))
+            ->post($this->ipaBase().'/api/ipa/devices', [
+                'eid' => $device->eid,
+                'eimId' => $eim->eim_id,
+                'eimFqdn' => $eim->eim_fqdn,
+                'pollInterval' => $pollInterval,
+            ]);
+
+        return [
+            'ok' => $resp->successful(),
+            'status' => $resp->status(),
+            'body' => $resp->json() ?? $resp->body(),
+        ];
+    }
+
+    /**
      * Fan out IPA operations to many devices in parallel.  Each target
      * carries its own method + path + payload so routes that embed the
      * EID in the path (ESipa poll, download status) work alongside ones

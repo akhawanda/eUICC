@@ -114,7 +114,10 @@ class IpaConsole extends Component
         $catalog = $this->operations();
         abort_unless(isset($catalog[$operation]), 400, 'Unknown operation');
 
-        $devices = Device::whereIn('id', $this->selectedIds)->where('enabled', true)->get();
+        $devices = Device::with('eimAssociations')
+            ->whereIn('id', $this->selectedIds)
+            ->where('enabled', true)
+            ->get();
         if ($devices->isEmpty()) {
             session()->flash('status', 'No devices selected.');
             return;
@@ -130,12 +133,29 @@ class IpaConsole extends Component
             'started_at' => now(),
         ]);
 
-        $targets = $devices->map(fn (Device $d) => array_merge(
-            ['eid' => $d->eid],
-            ($catalog[$operation]['build'])($d),
-        ))->values()->all();
+        // Ensure each selected device is registered with the IPA sim before
+        // running the operation. The IPA sim's ESipa routes 404 / reject
+        // unknown EIDs, so we idempotently POST /api/ipa/devices first.
+        // Devices that lack an eIM association fail fast with a clear msg.
+        $readyDevices = [];
+        $results = [];
+        foreach ($devices as $d) {
+            $reg = $sim->registerWithIpa($d);
+            if (! $reg['ok']) {
+                $results[$d->eid] = ['ok' => false, 'status' => $reg['status'], 'body' => $reg['body'], 'ms' => 0];
+            } else {
+                $readyDevices[] = $d;
+            }
+        }
 
-        $results = $sim->ipaFanOut($targets);
+        if ($readyDevices) {
+            $targets = collect($readyDevices)->map(fn (Device $d) => array_merge(
+                ['eid' => $d->eid],
+                ($catalog[$operation]['build'])($d),
+            ))->values()->all();
+
+            $results = array_merge($results, $sim->ipaFanOut($targets));
+        }
 
         $session->update([
             'results' => $results,
