@@ -87,11 +87,14 @@ class Form extends Component
         $this->eid = strtoupper($this->eid);
 
         $this->validate([
-            ...$this->rules(),
+            'name' => 'required|string|max:120',
             'eid' => [
                 'required', 'string', 'size:32', 'regex:/^[0-9A-F]{32}$/',
                 Rule::unique('devices', 'eid')->ignore($this->device?->id),
             ],
+            'eum_manufacturer' => 'nullable|string|max:120',
+            'default_smdp_address' => 'nullable|string|max:255',
+            'description' => 'nullable|string|max:1000',
             'eimAssociations.*.eim_id'   => 'required|string|max:120',
             'eimAssociations.*.eim_fqdn' => 'required|string|max:255',
             'preloadedProfiles.*.iccid'  => 'required|string|max:20|regex:/^[0-9A-Fa-f]{18,20}$/',
