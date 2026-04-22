@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\TransactionController;
 use App\Livewire\Devices\Form as DeviceForm;
 use App\Livewire\Devices\Index as DevicesIndex;
 use App\Livewire\Devices\Show as DeviceShow;
@@ -18,6 +19,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/devices/{device}', DeviceShow::class)->name('devices.show');
 
     Route::get('/ipa-console', IpaConsole::class)->name('ipa.console');
+
+    Route::get('/transactions', [TransactionController::class, 'index'])->name('transactions.index');
+    Route::get('/transactions/{transaction}', [TransactionController::class, 'show'])->name('transactions.show');
+
     Route::get('/server-status', ServerStatus::class)->name('server.status');
     Route::view('/architecture', 'architecture')->name('architecture');
 });

@@ -1,7 +1,7 @@
 <div class="max-w-5xl space-y-6">
-    <div class="flex items-start justify-between">
-        <div>
-            <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
                 <h2 class="text-xl font-semibold">{{ $device->name }}</h2>
                 <span class="rounded-full px-2 py-0.5 text-xs
                            {{ $device->enabled
@@ -10,10 +10,10 @@
                     {{ $device->enabled ? 'enabled' : 'disabled' }}
                 </span>
             </div>
-            <div class="mt-1 font-mono text-sm text-slate-500">{{ $device->eid }}</div>
+            <div class="mt-1 break-all font-mono text-sm text-slate-500">{{ $device->eid }}</div>
         </div>
 
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
             <a href="{{ route('devices.edit', $device) }}"
                class="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
                 Edit
@@ -69,7 +69,8 @@
         @if ($device->preloadedProfiles->isEmpty())
             <p class="text-sm text-slate-500">No preloaded profiles</p>
         @else
-            <table class="w-full text-left text-sm">
+            <div class="-mx-5 overflow-x-auto px-5">
+            <table class="w-full min-w-[560px] text-left text-sm">
                 <thead class="text-xs uppercase text-slate-500">
                     <tr>
                         <th class="py-2">ICCID</th>
@@ -91,6 +92,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @endif
     </div>
 

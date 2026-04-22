@@ -112,7 +112,8 @@
                 </span>
             </div>
 
-            <table class="w-full text-left text-sm">
+            <div class="-mx-5 overflow-x-auto px-5">
+            <table class="w-full min-w-[560px] text-left text-sm">
                 <thead class="text-xs uppercase text-slate-500">
                     <tr>
                         <th class="py-2">EID</th>
@@ -132,13 +133,14 @@
                             <td class="py-2">
                                 <details>
                                     <summary class="cursor-pointer text-indigo-600 hover:underline">view</summary>
-                                    <pre class="mt-1 max-w-3xl overflow-x-auto rounded bg-slate-100 p-2 text-xs dark:bg-slate-950">{{ is_string($r['body']) ? $r['body'] : json_encode($r['body'], JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES) }}</pre>
+                                    <pre class="mt-1 overflow-x-auto rounded bg-slate-100 p-2 text-xs dark:bg-slate-950">{{ is_string($r['body']) ? $r['body'] : json_encode($r['body'], JSON_PRETTY_PRINT|JSON_UNESCAPED_SLASHES) }}</pre>
                                 </details>
                             </td>
                         </tr>
                     @endforeach
                 </tbody>
             </table>
+            </div>
         </div>
     @endif
 </div>

@@ -1,5 +1,5 @@
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-3">
         <p class="text-sm text-slate-500">Health of the eUICC and IPA simulator processes, plus recent IPA console runs.</p>
         <button wire:click="refresh"
                 class="rounded border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
@@ -38,7 +38,8 @@
         @if ($recent->isEmpty())
             <p class="text-sm text-slate-500">No IPA operations recorded yet.</p>
         @else
-            <table class="w-full text-left text-sm">
+            <div class="-mx-5 overflow-x-auto px-5">
+            <table class="w-full min-w-[640px] text-left text-sm">
                 <thead class="text-xs uppercase text-slate-500">
                     <tr>
                         <th class="py-2">When</th>
@@ -75,6 +76,7 @@
                     @endforeach
                 </tbody>
             </table>
+            </div>
         @endif
     </div>
 </div>

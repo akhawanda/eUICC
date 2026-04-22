@@ -1,10 +1,10 @@
 <div>
-    <div class="mb-4 flex items-end justify-between gap-3">
-        <div class="flex items-end gap-3">
-            <div>
+    <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div class="flex flex-1 flex-wrap items-end gap-3">
+            <div class="min-w-0 flex-1 sm:flex-none">
                 <label class="block text-xs text-slate-500">Search</label>
                 <input wire:model.live.debounce.300ms="search" type="search" placeholder="Name, EID, manufacturer"
-                       class="mt-1 w-72 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-900">
+                       class="mt-1 w-full rounded border-slate-300 dark:border-slate-700 dark:bg-slate-900 sm:w-72">
             </div>
             <div>
                 <label class="block text-xs text-slate-500">Status</label>
@@ -17,13 +17,13 @@
             </div>
         </div>
         <a href="{{ route('devices.create') }}"
-           class="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500">
+           class="w-full rounded bg-indigo-600 px-4 py-2 text-center text-sm font-medium text-white hover:bg-indigo-500 sm:w-auto">
             + New device
         </a>
     </div>
 
-    <div class="overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-        <table class="w-full text-left text-sm">
+    <div class="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <table class="w-full min-w-[720px] text-left text-sm">
             <thead class="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-950 dark:text-slate-400">
                 <tr>
                     <th class="px-4 py-3">Name</th>
