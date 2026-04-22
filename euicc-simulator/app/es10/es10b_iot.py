@@ -214,6 +214,14 @@ class Es10bIotHandler:
         """Execute a Profile State Management Operation."""
         action = psmo.get("action", "")
         iccid = psmo.get("iccid")
+        # The IPA decoder ships the ICCID as a hex string (JSON-safe); the
+        # eUICC stores it as raw 10-byte BCD. Normalise here so callers
+        # that pass either shape both work.
+        if isinstance(iccid, str):
+            try:
+                iccid = bytes.fromhex(iccid)
+            except ValueError:
+                iccid = None
 
         if action == "enable":
             profile = self.euicc.find_profile_by_iccid(iccid) if iccid else None

@@ -234,19 +234,35 @@ class EsipaHandler:
         `package` may be either:
           - a base64-encoded DER blob (GSMA wire shape — eIM sends this)
           - a decoded dict with {psmoList, ecoList, ...} (for test fixtures)
+
+        When the input is the wire-format base64 blob we decode the
+        signed EuiccPackageRequest here and forward the extracted
+        ``{eimId, counterValue, psmoList, ecoList}`` to the eUICC sim,
+        which expects fields already parsed out of the DER.
         """
         import base64
         import httpx
 
         if isinstance(package, str):
-            # Base64-encoded DER — the GSMA wire format for euiccPackageRequest.
             logger.info("esep_relay", eid=session.eid, shape="base64", length=len(package))
             try:
-                der_hex = base64.b64decode(package).hex().upper()
+                der_bytes = base64.b64decode(package)
+                relay_payload = self.codec.decode_euicc_package_request(der_bytes)
             except Exception as e:
-                logger.warning("esep_base64_decode_failed", eid=session.eid, error=str(e))
-                return {"status": "invalid_euicc_package", "error": str(e), "sendResult": False}
-            relay_payload = {"euiccPackageRequest": der_hex}
+                logger.warning("esep_decode_failed", eid=session.eid, error=str(e))
+                return {
+                    "status": "invalid_euicc_package",
+                    "error": f"failed to decode EuiccPackageRequest: {e}",
+                    "sendResult": False,
+                }
+            logger.info(
+                "esep_decoded",
+                eid=session.eid,
+                eim_id=relay_payload.get("eimId"),
+                counter=relay_payload.get("counterValue"),
+                psmos=len(relay_payload.get("psmoList", [])),
+                ecos=len(relay_payload.get("ecoList", [])),
+            )
         elif isinstance(package, dict):
             logger.info(
                 "esep_relay",
