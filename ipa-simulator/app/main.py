@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import structlog
 
 from .api.routes import router, set_orchestrators
+from .api.trace_middleware import TraceMiddleware
 from .config import settings
 from .clients.euicc_client import EuiccClient
 from .clients.eim_client import EimClient
@@ -97,6 +98,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Captures outbound HTTP to eIM / SM-DP+ / eUICC-sim and splices the
+# per-request trace into /api/ipa/esipa/* and /api/ipa/download/*
+# JSON responses under `_trace`.
+app.add_middleware(TraceMiddleware)
 
 app.include_router(router)
 

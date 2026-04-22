@@ -12,6 +12,8 @@ different devices can target different eIM servers.
 import structlog
 import httpx
 
+from ..transport.trace import EVENT_HOOKS
+
 logger = structlog.get_logger()
 
 
@@ -43,6 +45,7 @@ class EimClient:
         self.client = httpx.AsyncClient(
             timeout=timeout,
             headers={"Content-Type": "application/json"},
+            event_hooks=EVENT_HOOKS,
         )
 
     async def close(self):

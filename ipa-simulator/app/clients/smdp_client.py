@@ -14,6 +14,8 @@ import base64
 import structlog
 import httpx
 
+from ..transport.trace import EVENT_HOOKS
+
 logger = structlog.get_logger()
 
 
@@ -31,6 +33,7 @@ class SmdpClient:
             base_url=self.base_url,
             timeout=timeout,
             headers={"Content-Type": "application/json"},
+            event_hooks=EVENT_HOOKS,
         )
 
     async def close(self):
