@@ -61,8 +61,10 @@ EuiccInfo2 ::= [34] SEQUENCE {
     euiccCiPKIdListForVerification  [9] SEQUENCE OF SubjectKeyIdentifier,
     euiccCiPKIdListForSigning       [10] SEQUENCE OF SubjectKeyIdentifier,
     euiccCategory               [11] INTEGER OPTIONAL,
-    sasAcreditationNumber       [12] UTF8String OPTIONAL,
-    certificationDataObject     [13] SEQUENCE {
+    forbiddenProfilePolicyRules [25] OCTET STRING OPTIONAL,
+    ppVersion                   VersionType,
+    sasAcreditationNumber       UTF8String,
+    certificationDataObject     [12] SEQUENCE {
         platformLabel       UTF8String,
         discoveryBaseURL    UTF8String OPTIONAL
     } OPTIONAL,
@@ -93,26 +95,26 @@ AuthenticateServerRequest ::= [56] SEQUENCE {
     ctxParams1          [4] CtxParams1 OPTIONAL
 }
 
+-- Canonical SGP.22 v3 layout — matches SM-DP+ rsp.asn and Comprion capture.
 ServerSigned1 ::= SEQUENCE {
     transactionId       [0] TransactionId,
     euiccChallenge      [1] Nonce,
-    serverAddress       [2] UTF8String,
-    serverChallenge     [3] Nonce,
-    sessionContext      [4] INTEGER OPTIONAL
+    serverAddress       [3] UTF8String,
+    serverChallenge     [4] Nonce
 }
 
-CtxParams1 ::= SEQUENCE {
-    ctxParamsForCommonAuthentication    CtxParamsForCommonAuthentication OPTIONAL
+CtxParams1 ::= CHOICE {
+    ctxParamsForCommonAuthentication    CtxParamsForCommonAuthentication
 }
 
 CtxParamsForCommonAuthentication ::= SEQUENCE {
-    matchingId          [0] UTF8String OPTIONAL,
-    deviceInfo          [1] DeviceInfo
+    matchingId          UTF8String OPTIONAL,
+    deviceInfo          DeviceInfo
 }
 
 DeviceInfo ::= SEQUENCE {
-    tac                 [0] OCTET STRING (SIZE(4)),
-    deviceCapabilities  [1] DeviceCapabilities
+    tac                 OCTET STRING (SIZE(4)),
+    deviceCapabilities  DeviceCapabilities
 }
 
 DeviceCapabilities ::= SEQUENCE {
@@ -133,30 +135,30 @@ AuthenticateServerResponse ::= [56] CHOICE {
 }
 
 AuthenticateResponseOk ::= SEQUENCE {
-    euiccSigned1        [0] EuiccSigned1,
-    euiccSignature1     [1] Signature,
-    euiccCertificate    [2] Certificate,
-    eumCertificate      [3] Certificate OPTIONAL
+    euiccSigned1        EuiccSigned1,
+    euiccSignature1     [APPLICATION 55] OCTET STRING,
+    euiccCertificate    Certificate,
+    eumCertificate      Certificate
 }
 
 EuiccSigned1 ::= SEQUENCE {
     transactionId       [0] TransactionId,
-    serverAddress       [1] UTF8String,
-    serverChallenge     [2] Nonce,
-    euiccInfo2          [22] EuiccInfo2 OPTIONAL
+    serverAddress       [3] UTF8String,
+    serverChallenge     [4] Nonce,
+    euiccInfo2          [34] EuiccInfo2,
+    ctxParams1          CtxParams1
 }
 
 AuthenticateResponseError ::= SEQUENCE {
-    transactionId               [0] TransactionId,
-    authenticateErrorCode       [1] INTEGER {
-        invalidCiPKId               (1),
-        invalidServerSignature      (2),
-        unsupportedCiPKId           (3),
-        expiredCertificate          (4),
-        revokedCertificate          (5),
-        invalidCertificate          (6),
-        insufficientMemory          (7),
-        invalidTransactionId        (8),
+    transactionId               TransactionId,
+    authenticateErrorCode       INTEGER {
+        invalidCertificate          (1),
+        invalidSignature            (2),
+        unsupportedCurve            (3),
+        noSessionContext            (4),
+        invalidOid                  (5),
+        euiccChallengeMismatch      (6),
+        ciPKUnknown                 (7),
         undefinedError              (127)
     }
 }
@@ -181,14 +183,14 @@ PrepareDownloadResponse ::= [33] CHOICE {
 }
 
 PrepareDownloadResponseOk ::= SEQUENCE {
-    euiccSigned2        [0] EuiccSigned2,
-    euiccSignature2     [1] Signature
+    euiccSigned2        EuiccSigned2,
+    euiccSignature2     [APPLICATION 55] OCTET STRING
 }
 
 EuiccSigned2 ::= SEQUENCE {
     transactionId       [0] TransactionId,
-    euiccOtpk           [1] OCTET STRING,
-    hashCc              [2] OCTET STRING OPTIONAL
+    euiccOtpk           [APPLICATION 73] OCTET STRING,
+    hashCc              OCTET STRING OPTIONAL
 }
 
 PrepareDownloadResponseError ::= SEQUENCE {

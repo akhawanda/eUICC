@@ -223,6 +223,8 @@ class Es10bIotHandler:
             except ValueError:
                 iccid = None
 
+        iccid_hex = iccid.hex() if isinstance(iccid, (bytes, bytearray)) else (iccid or "")
+
         if action == "enable":
             profile = self.euicc.find_profile_by_iccid(iccid) if iccid else None
             if profile is None:
@@ -234,7 +236,7 @@ class Es10bIotHandler:
             if current:
                 current.state = ProfileState.DISABLED
             profile.state = ProfileState.ENABLED
-            return {"action": action, "result": "ok", "iccid": iccid}
+            return {"action": action, "result": "ok", "iccid": iccid_hex}
 
         elif action == "disable":
             profile = self.euicc.find_profile_by_iccid(iccid) if iccid else None
@@ -243,7 +245,7 @@ class Es10bIotHandler:
             if profile.state != ProfileState.ENABLED:
                 return {"action": action, "result": "notEnabled"}
             profile.state = ProfileState.DISABLED
-            return {"action": action, "result": "ok", "iccid": iccid}
+            return {"action": action, "result": "ok", "iccid": iccid_hex}
 
         elif action == "delete":
             profile = self.euicc.find_profile_by_iccid(iccid) if iccid else None
@@ -252,7 +254,7 @@ class Es10bIotHandler:
             if profile.state == ProfileState.ENABLED:
                 return {"action": action, "result": "mustDisableFirst"}
             self.euicc.profiles.remove(profile)
-            return {"action": action, "result": "ok", "iccid": iccid}
+            return {"action": action, "result": "ok", "iccid": iccid_hex}
 
         elif action == "listProfileInfo":
             profiles = []
@@ -275,12 +277,15 @@ class Es10bIotHandler:
         action = eco.get("action", "")
 
         if action == "addEim":
-            return self.add_eim(eco.get("eimConfig", {}))
+            r = self.add_eim(eco.get("eimConfig", {}))
+            return {"action": action, "result": "ok" if r.get("addEimResult") == 0 else "error", **r}
         elif action == "deleteEim":
-            return self.delete_eim(eco.get("eimId", ""))
+            r = self.delete_eim(eco.get("eimId", ""))
+            return {"action": action, "result": "ok" if r.get("deleteEimResult") == 0 else "error", **r}
         elif action == "updateEim":
-            return self.update_eim(eco.get("eimId", ""), eco.get("eimConfig", {}))
+            r = self.update_eim(eco.get("eimId", ""), eco.get("eimConfig", {}))
+            return {"action": action, "result": "ok" if r.get("updateEimResult") == 0 else "error", **r}
         elif action == "listEim":
-            return self.list_eim()
+            return {"action": action, "result": "ok", **self.list_eim()}
 
         return {"action": action, "result": "unknownAction"}

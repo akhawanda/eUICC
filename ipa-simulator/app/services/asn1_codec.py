@@ -76,6 +76,34 @@ def _walk(buf: bytes):
         yield tag, v
 
 
+def _enc_len(n: int) -> bytes:
+    if n < 0x80:
+        return bytes([n])
+    raw = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    return bytes([0x80 | len(raw)]) + raw
+
+
+def _enc_tag(tag: int) -> bytes:
+    if tag <= 0xFF:
+        return bytes([tag])
+    n = (tag.bit_length() + 7) // 8
+    return tag.to_bytes(n, "big")
+
+
+def _tlv(tag: int, value: bytes) -> bytes:
+    return _enc_tag(tag) + _enc_len(len(value)) + value
+
+
+def _enc_uint(n: int) -> bytes:
+    """Minimal unsigned-integer encoding (no leading 0x00 unless needed for sign)."""
+    if n == 0:
+        return b"\x00"
+    raw = n.to_bytes((n.bit_length() + 7) // 8, "big")
+    if raw[0] & 0x80:
+        raw = b"\x00" + raw
+    return raw
+
+
 class Asn1Codec:
     """ASN.1 DER codec for IPA simulator ESipa messages."""
 
@@ -137,6 +165,37 @@ class Asn1Codec:
                 out["psmoList"] = [self._decode_psmo(pt, pv) for pt, pv in _walk(v)]
             elif t == 0xA1:
                 out["ecoList"] = [self._decode_eco(et, ev) for et, ev in _walk(v)]
+        return out
+
+    def decode_profile_download_trigger_request(self, der: bytes) -> dict:
+        """Decode BF54 ProfileDownloadTriggerRequest into a flat dict.
+
+        Wire shape per eIM-go encoder:
+          BF54 -> A0 (profileDownloadData) -> 80 activationCode (UTF-8)
+                  82 eimTransactionId (16B)
+
+        Returns ``{activationCode, smdpAddress, matchingId, transactionId}``.
+        smdpAddress + matchingId are extracted from the LPA AC string
+        (`<v>$<smdp>$<matching>[$<cc>][$<oid>]`).
+        """
+        tag, inner, _ = _read_tlv(der, 0)
+        if tag != 0xBF54:
+            raise ValueError(f"expected BF54, got {tag:#X}")
+
+        out = {"activationCode": "", "smdpAddress": "", "matchingId": "", "transactionId": ""}
+        for t, v in _walk(inner):
+            if t == 0xA0:
+                for st, sv in _walk(v):
+                    if st == 0x80:
+                        out["activationCode"] = sv.decode("utf-8", errors="replace")
+            elif t == 0x82:
+                out["transactionId"] = v.hex().upper()
+
+        if out["activationCode"]:
+            parts = out["activationCode"].split("$")
+            if len(parts) >= 3:
+                out["smdpAddress"] = parts[1]
+                out["matchingId"] = parts[2]
         return out
 
     def _decode_psmo(self, tag: int, value: bytes) -> dict:
@@ -231,33 +290,131 @@ class Asn1Codec:
         self,
         eim_transaction_id: bytes | None = None,
         error_code: int | None = None,
+        eid_hex: str | None = None,
     ) -> str:
-        """
-        Encode ProfileDownloadTriggerResult (BF54) as base64 DER.
+        """Encode ProvideEimPackageResult > profileDownloadTriggerResult as base64 DER.
 
-        This is the response after a profile download trigger.
+        Wire shape eIM-go's decoder reads:
+          BF50 <len>
+            5A 10 <eid>                     -- required for finishQueueItem
+            BF54 <len>                      -- profileDownloadTriggerResult
+              82 10 <transactionId 16B>     -- echoed
+              [A1 ... 80 errorCode]         -- only on failure (scanForDownloadError)
         """
-        result = {}
+        body = b""
         if eim_transaction_id:
-            result["eimTransactionId"] = eim_transaction_id
+            tx = eim_transaction_id if isinstance(eim_transaction_id, (bytes, bytearray)) else bytes.fromhex(eim_transaction_id)
+            body += _tlv(0x82, tx)
         if error_code is not None:
-            result["errorCode"] = error_code
+            err_inner = _tlv(0x80, _enc_uint(error_code))
+            body += _tlv(0xA1, err_inner)
+        bf54 = _tlv(0xBF54, body)
+        outer = b""
+        if eid_hex:
+            outer += _tlv(0x5A, bytes.fromhex(eid_hex))
+        outer += bf54
+        bf50 = _tlv(0xBF50, outer)
+        return base64.b64encode(bf50).decode("ascii")
 
-        return self.encode_provide_eim_package_result(
-            ("profileDownloadTriggerResult", result)
-        )
+    # Per SGP.32 §5.9.5 ProfileManagementOperationResult:
+    #   ok=0, iccidOrAidNotFound=1, profileNotInDisabledState=2,
+    #   profileNotInEnabledState=3, catBusy=5, disallowedByPolicy=6,
+    #   wrongProfileReenabling=7, commandError/undefinedError=127.
+    _PSMO_RESULT_CODES = {
+        "ok": 0,
+        "iccidNotFound": 1,
+        "alreadyEnabled": 2,
+        "notEnabled": 3,
+        "mustDisableFirst": 7,
+    }
 
-    def encode_euicc_package_result(self, result_data: bytes) -> str:
+    def encode_euicc_package_result(
+        self,
+        eim_id: str,
+        counter_value: int,
+        transaction_id_hex: str | None,
+        seq_number: int,
+        operation_results: list[dict],
+        eid_hex: str | None = None,
+    ) -> str:
+        """Encode ProvideEimPackageResult > euiccPackageResult > A0 signed.
+
+        Wire shape mirroring the eIM Go decoder's expectations:
+          BF50 -> 5A eidValue + BF51 -> A0 -> 30 SEQUENCE {
+            80 eimId, 81 counterValue, 82 txId?, 83 seqNumber, <opResults...>
+          }
+        eidValue (tag 5A, APPLICATION 26) is required by eIM-go's finishQueueItem
+        for queue lookup — without it the queue row stays `queued` even on
+        Executed-Success.
+        Signature is omitted (sim is a protocol surface, not crypto).
         """
-        Encode EuiccPackageResult (BF50/BF51) as base64 DER.
+        body = b""
+        body += _tlv(0x80, eim_id.encode("utf-8"))
+        body += _tlv(0x81, _enc_uint(counter_value))
+        if transaction_id_hex:
+            body += _tlv(0x82, bytes.fromhex(transaction_id_hex))
+        body += _tlv(0x83, _enc_uint(seq_number))
+        for r in operation_results:
+            body += self._encode_op_result(r)
 
-        Wraps the raw result from eUICC package processing.
-        """
-        return self.encode_provide_eim_package_result(
-            ("euiccPackageResult", {
-                "euiccPackageResultSigned": result_data,
-            })
-        )
+        signed = _tlv(0x30, body)
+        bf51 = _tlv(0xBF51, _tlv(0xA0, signed))
+        outer = b""
+        if eid_hex:
+            outer += _tlv(0x5A, bytes.fromhex(eid_hex))
+        outer += bf51
+        bf50 = _tlv(0xBF50, outer)
+        return base64.b64encode(bf50).decode("ascii")
+
+    def _encode_op_result(self, r: dict) -> bytes:
+        action = r.get("action", "")
+        code = self._PSMO_RESULT_CODES.get(r.get("result", ""), 127)
+
+        if action == "enable":
+            return _tlv(0x83, bytes([code]))
+        if action == "disable":
+            return _tlv(0x84, bytes([code]))
+        if action == "delete":
+            return _tlv(0x85, bytes([code]))
+        if action == "getRAT":
+            return _tlv(0x86, b"")
+        if action == "listProfileInfo":
+            entries = b"".join(self._encode_profile_info(p) for p in r.get("profiles", []))
+            return _tlv(0xBF2D, _tlv(0xA0, entries))
+        if action == "addEim":
+            inner = b""
+            token = r.get("associationToken")
+            if token is not None:
+                inner += _tlv(0x84, _enc_uint(token))
+            inner += _tlv(0x02, bytes([r.get("addEimResult", 0)]))
+            return _tlv(0xA8, inner)
+        if action == "deleteEim":
+            return _tlv(0x89, bytes([r.get("deleteEimResult", 0)]))
+        if action == "updateEim":
+            return _tlv(0x8A, bytes([r.get("updateEimResult", 0)]))
+        if action == "listEim":
+            entries = b""
+            for cfg in r.get("eimConfigurationDataList", []):
+                ec = b""
+                ec += _tlv(0x80, cfg.get("eimId", "").encode("utf-8"))
+                if cfg.get("eimFqdn"):
+                    ec += _tlv(0x81, cfg["eimFqdn"].encode("utf-8"))
+                entries += _tlv(0xA0, ec)
+            return _tlv(0xBB, entries)
+        return b""
+
+    def _encode_profile_info(self, p: dict) -> bytes:
+        body = b""
+        iccid_hex = p.get("iccid", "")
+        if iccid_hex:
+            body += _tlv(0x5A, bytes.fromhex(iccid_hex))
+        state = 1 if p.get("state") == "enabled" else 0
+        body += _tlv(0x9F70, bytes([state]))
+        if p.get("name"):
+            body += _tlv(0x9F12, p["name"].encode("utf-8"))
+        if p.get("spName"):
+            body += _tlv(0x9F11, p["spName"].encode("utf-8"))
+        return _tlv(0xE3, body)
 
     def encode_eim_acknowledgements(self, seq_numbers: list[int]) -> str:
         """Encode EimAcknowledgements as base64 DER."""

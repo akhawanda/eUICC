@@ -294,6 +294,44 @@ class CertificateInfrastructure:
         """Get CI Public Key Identifier (SubjectKeyIdentifier from CI cert)."""
         return self.ci.ski
 
+    def get_trusted_ci_certs(self) -> list[x509.Certificate]:
+        """Return all CI certs the eUICC trusts: its own (for signing) plus
+        any extra trust anchors loaded from `certs/_trusted_cis/*.crt`. The
+        extras let the sim accept SM-DP+/eIM chains rooted in the public
+        GSMA SGP.26 TestCI without needing the corresponding private key.
+        """
+        out: list[x509.Certificate] = [self.ci.certificate]
+        trusted_dir = Path(__file__).parent.parent.parent / "certs" / "_trusted_cis"
+        if trusted_dir.is_dir():
+            for p in sorted(trusted_dir.iterdir()):
+                if p.suffix.lower() not in (".crt", ".pem", ".der"):
+                    continue
+                try:
+                    raw = p.read_bytes()
+                    cert = (
+                        x509.load_pem_x509_certificate(raw)
+                        if b"-----BEGIN CERTIFICATE-----" in raw
+                        else x509.load_der_x509_certificate(raw)
+                    )
+                    out.append(cert)
+                except Exception:
+                    continue
+        return out
+
+    def get_trusted_ci_pkids(self) -> list[bytes]:
+        """Return SubjectKeyIdentifier of every trusted CI cert."""
+        ids: list[bytes] = []
+        for cert in self.get_trusted_ci_certs():
+            try:
+                ski = cert.extensions.get_extension_for_class(
+                    x509.SubjectKeyIdentifier
+                ).value.digest
+                if ski and ski not in ids:
+                    ids.append(ski)
+            except Exception:
+                continue
+        return ids
+
     def get_euicc_cert_der(self) -> bytes:
         """Get eUICC certificate in DER encoding."""
         return self.euicc.certificate.public_bytes(serialization.Encoding.DER)

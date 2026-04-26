@@ -59,8 +59,8 @@ class Es10cHandler:
         profile_list = []
         for p in profiles:
             info = {
-                "iccid": p.iccid,
-                "isdpAid": p.isdp_aid,
+                "iccid": p.iccid.hex() if isinstance(p.iccid, (bytes, bytearray)) else p.iccid,
+                "isdpAid": p.isdp_aid.hex() if isinstance(p.isdp_aid, (bytes, bytearray)) else p.isdp_aid,
                 "profileState": 1 if p.state == ProfileState.ENABLED else 0,
                 "profileName": p.profile_name,
                 "serviceProviderName": p.service_provider_name,

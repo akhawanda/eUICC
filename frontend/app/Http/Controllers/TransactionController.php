@@ -21,6 +21,9 @@ class TransactionController
         if ($request->filled('status')) {
             $query->where('status', $request->input('status'));
         }
+        if ($request->filled('polling')) {
+            $query->where('polling_session_key', $request->input('polling'));
+        }
 
         $transactions = $query->paginate(25)->withQueryString();
 

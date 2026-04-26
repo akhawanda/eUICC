@@ -42,6 +42,75 @@
         'run_op'       => $transaction->operation,
     ];
 
+    // Map (endpoint with {eid} placeholder) -> [interface, function, GSMA spec §].
+    // SGP.22 v3.1 (consumer RSP) covers ES9+, ES10b, ES10c.
+    // SGP.32 v1.2 (M2M IoT) covers ESipa, ES10b-IoT, ESep.
+    $specMap = [
+        // ESipa — IPA ↔ eIM (SGP.32 §6.4.1)
+        'POST /gsma/rsp2/esipa/getEimPackage'           => ['ESipa', 'GetEimPackage',           'SGP.32 §6.4.1.5'],
+        'POST /gsma/rsp2/esipa/provideEimPackageResult' => ['ESipa', 'ProvideEimPackageResult', 'SGP.32 §6.4.1.6'],
+        'POST /gsma/rsp2/esipa/initiateAuthentication'  => ['ESipa', 'InitiateAuthentication',  'SGP.32 §6.4.1.1'],
+        'POST /gsma/rsp2/esipa/authenticateClient'      => ['ESipa', 'AuthenticateClient',      'SGP.32 §6.4.1.2'],
+        'POST /gsma/rsp2/esipa/getBoundProfilePackage'  => ['ESipa', 'GetBoundProfilePackage',  'SGP.32 §6.4.1.3'],
+        'POST /gsma/rsp2/esipa/handleNotification'      => ['ESipa', 'HandleNotification',      'SGP.32 §6.4.1.4'],
+        'POST /gsma/rsp2/esipa/cancelSession'           => ['ESipa', 'CancelSession',           'SGP.32 §6.4.1.7'],
+
+        // ES9+ — IPA ↔ SM-DP+ (SGP.22 §5.6)
+        'POST /gsma/rsp2/es9plus/initiateAuthentication' => ['ES9+', 'InitiateAuthentication',  'SGP.22 §5.6.1'],
+        'POST /gsma/rsp2/es9plus/authenticateClient'     => ['ES9+', 'AuthenticateClient',      'SGP.22 §5.6.2'],
+        'POST /gsma/rsp2/es9plus/getBoundProfilePackage' => ['ES9+', 'GetBoundProfilePackage',  'SGP.22 §5.6.3'],
+        'POST /gsma/rsp2/es9plus/handleNotification'     => ['ES9+', 'HandleNotification',     'SGP.22 §5.6.4'],
+        'POST /gsma/rsp2/es9plus/cancelSession'          => ['ES9+', 'CancelSession',          'SGP.22 §5.6.5'],
+
+        // ES10b — IPA ↔ eUICC, profile download / authentication (SGP.22 §5.7)
+        'GET  /api/es10/{eid}/euicc-info'           => ['ES10b', 'GetEUICCInfo1/2',          'SGP.22 §5.7.3/4'],
+        'POST /api/es10/{eid}/euicc-challenge'      => ['ES10b', 'GetEuiccChallenge',        'SGP.22 §5.7.6'],
+        'POST /api/es10/{eid}/authenticate-server'  => ['ES10b', 'AuthenticateServer',       'SGP.22 §5.7.13'],
+        'POST /api/es10/{eid}/prepare-download'     => ['ES10b', 'PrepareDownload',          'SGP.22 §5.7.5'],
+        'POST /api/es10/{eid}/load-bound-package'   => ['ES10b', 'LoadBoundProfilePackage',  'SGP.22 §5.5.4'],
+        'GET  /api/es10/{eid}/notifications'        => ['ES10b', 'ListNotification',         'SGP.22 §5.7.9'],
+
+        // ES10c — IPA ↔ eUICC, profile state + general info (SGP.22 §5.7)
+        'GET  /api/es10/{eid}/profiles'             => ['ES10c', 'GetProfilesInfo',          'SGP.22 §5.7.15'],
+        'GET  /api/es10/{eid}/eid'                  => ['ES10c', 'GetEID',                   'SGP.22 §5.7.20'],
+        'POST /api/es10/{eid}/enable'               => ['ES10c', 'EnableProfile',            'SGP.22 §5.7.16'],
+        'POST /api/es10/{eid}/disable'              => ['ES10c', 'DisableProfile',           'SGP.22 §5.7.17'],
+        'POST /api/es10/{eid}/delete'               => ['ES10c', 'DeleteProfile',            'SGP.22 §5.7.18'],
+
+        // ES10b-IoT — IPA ↔ eUICC, eIM management + ESep relay (SGP.32 §5.9)
+        'POST /api/es10/{eid}/euicc-package'        => ['ES10b-IoT', 'LoadEuiccPackage',     'SGP.32 §5.9.2'],
+        'GET  /api/es10/{eid}/eim-config'           => ['ES10b-IoT', 'GetEimConfigurationData', 'SGP.32 §5.9.5'],
+        'POST /api/es10/{eid}/add-eim'              => ['ES10b-IoT', 'AddEim',               'SGP.32 §5.9.7'],
+        'POST /api/es10/{eid}/delete-eim'           => ['ES10b-IoT', 'DeleteEim',            'SGP.32 §5.9.8'],
+        'POST /api/es10/{eid}/update-eim'           => ['ES10b-IoT', 'UpdateEim',            'SGP.32 §5.9.9'],
+        'GET  /api/es10/{eid}/list-eim'             => ['ES10b-IoT', 'ListEim',              'SGP.32 §5.9.6'],
+        'GET  /api/es10/{eid}/certs'                => ['ES10b-IoT', 'GetCerts',             'SGP.32 §5.9.10'],
+
+        // Internal endpoints (not GSMA-spec) — Dashboard ↔ sims orchestration
+        'POST /api/management/euicc'                       => ['Internal', 'PushDevice',     ''],
+        'POST /api/ipa/devices'                            => ['Internal', 'RegisterDevice', ''],
+        'POST /api/ipa/esipa/{eid}/poll-once'              => ['Internal', 'TriggerEsipaPoll',     ''],
+        'POST /api/ipa/esipa/{eid}/start-polling'          => ['Internal', 'StartEsipaPolling',    ''],
+        'POST /api/ipa/esipa/{eid}/stop-polling'           => ['Internal', 'StopEsipaPolling',     ''],
+        'POST /api/ipa/download/start'                     => ['Internal', 'TriggerProfileDownload', ''],
+        'POST /api/ipa/download/cancel'                    => ['Internal', 'CancelDownload',      ''],
+    ];
+
+    // Resolve a step's spec triple. Normalises method+endpoint into a key
+    // matching $specMap (replaces 32-hex EID with the {eid} placeholder).
+    $resolveSpec = function ($method, $endpoint) use ($specMap) {
+        if (! $endpoint) return ['', '', ''];
+        $path = parse_url($endpoint, PHP_URL_PATH) ?: $endpoint;
+        $path = preg_replace('#/[0-9A-Fa-f]{32}(?=/|$)#', '/{eid}', $path);
+        $key = sprintf('%-4s %s', strtoupper($method ?? 'POST'), $path);
+        if (isset($specMap[$key])) return $specMap[$key];
+        $altKey = strtoupper($method ?? 'POST').' '.$path;
+        foreach ($specMap as $k => $v) {
+            if (preg_replace('/\s+/', ' ', $k) === preg_replace('/\s+/', ' ', $altKey)) return $v;
+        }
+        return ['', '', ''];
+    };
+
     $stepAsn1 = [];
     $asn1Candidates = [
         'euiccPackageRequest', 'ipaEuiccDataRequest', 'profileDownloadTriggerRequest',
@@ -52,6 +121,7 @@
         'BF20' => 'AuthenticateServerResponse',
         'BF21' => 'PrepareDownloadResponse',
         'BF22' => 'GetEuiccChallenge',
+        'BF2D' => 'listProfileInfoResult',
         'BF2E' => 'GetEuiccInfo1',
         'BF30' => 'ListNotification',
         'BF36' => 'BoundProfilePackage',
@@ -61,7 +131,126 @@
         'BF52' => 'IpaEuiccData',
         'BF53' => 'EimAcknowledgements',
         'BF54' => 'ProfileDownloadTrigger',
+        '30'   => 'SEQUENCE',
+        '5A'   => 'iccid / eidValue',
+        'A0'   => '[0] / psmoList / signedResult',
+        'A1'   => '[1] / ecoList / errorSigned',
+        'A2'   => '[2]',
+        'A3'   => '[3] enable',
+        'A4'   => '[4] disable',
+        'A5'   => '[5] delete',
+        'A6'   => '[6] getRAT',
+        'A7'   => '[7] configureImmediateEnable',
+        'A8'   => '[8] / addEim',
+        'A9'   => '[9] / deleteEim',
+        'AA'   => '[10] / updateEim',
+        'AB'   => '[11] / listEim',
+        '80'   => '[0] (primitive)',
+        '81'   => '[1] (primitive)',
+        '82'   => '[2] (primitive)',
+        '83'   => '[3] (primitive)',
+        '84'   => '[4] (primitive)',
+        '5F37' => 'signature [APPLICATION 55]',
+        'E3'   => 'ProfileInfo',
+        '9F70' => 'profileState',
+        '9F12' => 'profileName',
+        '9F11' => 'serviceProviderName',
     ];
+
+    // Recursive TLV walker → array of [{tag, len, isConstructed, value, children?, depth}].
+    $walkTlv = function (string $hex, int $depth = 0) use (&$walkTlv): array {
+        $bytes = @hex2bin($hex);
+        if (! $bytes) return [];
+        $n = strlen($bytes);
+        $pos = 0;
+        $out = [];
+        while ($pos < $n) {
+            // Tag (1 or 2 bytes).
+            $first = ord($bytes[$pos++]);
+            $tag = strtoupper(dechex($first));
+            if (strlen($tag) === 1) $tag = '0'.$tag;
+            if (($first & 0x1F) === 0x1F) {
+                $tag2 = ord($bytes[$pos++]);
+                $tag .= str_pad(strtoupper(dechex($tag2)), 2, '0', STR_PAD_LEFT);
+                while (($tag2 & 0x80) && $pos < $n) {
+                    $tag2 = ord($bytes[$pos++]);
+                    $tag .= str_pad(strtoupper(dechex($tag2)), 2, '0', STR_PAD_LEFT);
+                }
+            }
+            // Length.
+            if ($pos >= $n) break;
+            $lb = ord($bytes[$pos++]);
+            if ($lb < 0x80) {
+                $len = $lb;
+            } else {
+                $nb = $lb & 0x7F;
+                if ($nb === 0 || $pos + $nb > $n) break;
+                $len = 0;
+                for ($i = 0; $i < $nb; $i++) {
+                    $len = ($len << 8) | ord($bytes[$pos++]);
+                }
+            }
+            if ($pos + $len > $n) break;
+
+            $valBytes = substr($bytes, $pos, $len);
+            $pos += $len;
+
+            $isConstructed = ($first & 0x20) !== 0;
+            $node = [
+                'tag' => $tag,
+                'len' => $len,
+                'constructed' => $isConstructed,
+                'depth' => $depth,
+                'hex' => bin2hex($valBytes),
+            ];
+            if ($isConstructed && $len > 0) {
+                $node['children'] = $walkTlv(bin2hex($valBytes), $depth + 1);
+            }
+            $out[] = $node;
+        }
+        return $out;
+    };
+
+    // Heuristic value renderer: prefer UTF-8 for printable strings, decode small
+    // unsigned ints, fall back to hex.
+    $renderValue = function (array $node): string {
+        if ($node['constructed']) return '';
+        $v = @hex2bin($node['hex']);
+        if ($v === false || $v === '') return '';
+        $printable = preg_match('/^[\x20-\x7E]+$/', $v) === 1;
+        if ($printable && strlen($v) >= 2) {
+            return '"' . $v . '"';
+        }
+        if ($node['len'] >= 1 && $node['len'] <= 4) {
+            $n = 0;
+            foreach (str_split($v) as $c) $n = ($n << 8) | ord($c);
+            return $n . ' (0x' . strtoupper(bin2hex($v)) . ')';
+        }
+        return strtoupper(bin2hex($v));
+    };
+
+    $renderTree = function (array $nodes) use (&$renderTree, $tagNames, $renderValue): string {
+        $html = '';
+        foreach ($nodes as $n) {
+            $name = $tagNames[$n['tag']] ?? '';
+            $indent = str_repeat('  ', $n['depth']);
+            $tagBadge = '<span class="font-mono text-violet-700 dark:text-violet-300">'.$n['tag'].'</span>';
+            $nameBadge = $name ? ' <span class="text-slate-700 dark:text-slate-200">'.htmlspecialchars($name).'</span>' : '';
+            $lenSpan = ' <span class="text-slate-500">· '.$n['len'].'B</span>';
+            $valSpan = '';
+            if (! $n['constructed']) {
+                $val = $renderValue($n);
+                if ($val !== '') {
+                    $valSpan = ' <span class="text-emerald-700 dark:text-emerald-300 break-all">= '.htmlspecialchars($val).'</span>';
+                }
+            }
+            $html .= '<div class="font-mono text-xs leading-relaxed whitespace-pre">'.$indent.$tagBadge.$nameBadge.$lenSpan.$valSpan.'</div>';
+            if (! empty($n['children'])) {
+                $html .= $renderTree($n['children']);
+            }
+        }
+        return $html;
+    };
     foreach ($steps as $step) {
         $hex = null;
         $tagName = null;
@@ -99,6 +288,12 @@
                 <div>
                     <div class="text-xs text-slate-500">Operation</div>
                     <div class="font-medium">{{ $transaction->operation }}</div>
+                    @if ($transaction->polling_session_key)
+                        <a href="{{ route('transactions.index', ['polling' => $transaction->polling_session_key]) }}"
+                           class="mt-1 inline-flex items-center gap-1 rounded bg-indigo-100 px-2 py-0.5 text-[11px] text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900 dark:text-indigo-200">
+                            polling session
+                        </a>
+                    @endif
                 </div>
                 <div>
                     <div class="text-xs text-slate-500">Device</div>
@@ -187,10 +382,22 @@
                                         $rightArrow = $to > $from;
                                         $selfCall = $from === $to;
                                         $isReq = $step->isRequest();
-                                        $label = $step->endpoint ?? '';
-                                        // Strip common API prefixes for readability
-                                        $label = preg_replace('#^/api/(ipa|es10|management)/?#', '', $label);
-                                        $label = preg_replace('#^/gsma/rsp2/(esipa|es9plus)/?#', '', $label);
+                                        [$ifaceName, $fnName, $specRef] = $resolveSpec($step->method, $step->endpoint);
+                                        // Fallback to the raw path with API prefixes stripped if not in map.
+                                        if (! $fnName) {
+                                            $rawLabel = $step->endpoint ?? '';
+                                            $rawLabel = preg_replace('#^/api/(ipa|es10|management)/?#', '', $rawLabel);
+                                            $rawLabel = preg_replace('#^/gsma/rsp2/(esipa|es9plus)/?#', '', $rawLabel);
+                                        }
+                                        $ifaceColor = match ($ifaceName) {
+                                            'ESipa'      => 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100',
+                                            'ES9+'       => 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100',
+                                            'ES10b'      => 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-100',
+                                            'ES10c'      => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100',
+                                            'ES10b-IoT'  => 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-100',
+                                            'Internal'   => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                                            default      => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                                        };
                                     @endphp
 
                                     @if ($prevPhase !== null && $prevPhase !== $step->phase)
@@ -227,9 +434,14 @@
                                             @endif
                                         </div>
                                         <div class="absolute top-0 truncate text-[11px] font-medium {{ $isReq ? 'text-slate-800 dark:text-slate-100' : 'text-slate-500' }}"
-                                             style="left: calc({{ $leftPct }}% + 6px); right: calc({{ $rightPct }}% + 6px); line-height: 14px;">
+                                             style="left: calc({{ $leftPct }}% + 6px); right: calc({{ $rightPct }}% + 6px); line-height: 14px;"
+                                             @if ($specRef) title="{{ $specRef }}" @endif>
                                             <span class="text-slate-400">({{ $index + 1 }})</span>
-                                            {{ $step->method ? $step->method.' ' : '' }}{{ $label }}
+                                            @if ($ifaceName)
+                                                <span class="mr-1 rounded px-1 text-[9px] font-semibold uppercase {{ $ifaceColor }}">{{ $ifaceName }}</span>{{ $fnName }}
+                                            @else
+                                                {{ $step->method ? $step->method.' ' : '' }}{{ $rawLabel ?? $step->endpoint }}
+                                            @endif
                                             @if ($step->http_status)
                                                 <span class="ml-1 {{ $step->http_status >= 200 && $step->http_status < 300 ? 'text-emerald-600' : 'text-rose-600' }}">{{ $step->http_status }}</span>
                                             @endif
@@ -261,6 +473,7 @@
                         $bodyPretty = $bodyDecoded
                             ? json_encode($bodyDecoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
                             : $step->http_body;
+                        [$detailIface, $detailFn, $detailRef] = $resolveSpec($step->method, $step->endpoint);
                     @endphp
                     <div x-show="selectedStep === {{ $step->id }}" x-cloak class="rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
                         <div class="border-b border-slate-200 dark:border-slate-800">
@@ -270,6 +483,23 @@
                                 </span>
                                 <span class="text-xs text-slate-400">{{ $step->created_at?->format('H:i:s.v') }}</span>
                             </div>
+                            @if ($detailIface)
+                                <div class="flex flex-wrap items-center gap-2 px-5 pt-2 text-xs">
+                                    <span class="rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide
+                                        {{ match ($detailIface) {
+                                            'ESipa' => 'bg-violet-100 text-violet-800 dark:bg-violet-900 dark:text-violet-100',
+                                            'ES9+' => 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-100',
+                                            'ES10b' => 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-100',
+                                            'ES10c' => 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100',
+                                            'ES10b-IoT' => 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-100',
+                                            default => 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+                                        } }}">{{ $detailIface }}</span>
+                                    <span class="font-medium text-slate-800 dark:text-slate-100">{{ $detailFn }}</span>
+                                    @if ($detailRef)
+                                        <span class="text-slate-400">· {{ $detailRef }}</span>
+                                    @endif
+                                </div>
+                            @endif
                             <div class="px-5 pb-2 pt-1 text-xs text-slate-500">
                                 {{ $step->method }} {{ $step->endpoint }}
                                 @if ($step->response_time_ms)
@@ -343,16 +573,21 @@
                                 @endif
                             </div>
 
-                            {{-- ASN.1 meta --}}
+                            {{-- ASN.1 decoded tree --}}
                             <div x-show="tab === 'asn1'" x-cloak>
                                 @if ($hex)
-                                    <div class="rounded-lg border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/40">
-                                        <div class="text-sm font-bold text-violet-700 dark:text-violet-200">{{ $tagName ?: 'Unknown tag' }}</div>
-                                        <div class="mt-1 text-xs text-violet-600 dark:text-violet-300">Tag: {{ substr($hex, 0, 4) }} · {{ strlen($hex) / 2 }} bytes total</div>
+                                    <div class="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs dark:border-violet-900 dark:bg-violet-950/40">
+                                        <span class="font-bold text-violet-700 dark:text-violet-200">{{ $tagName ?: 'Unknown tag' }}</span>
+                                        <span class="ml-2 text-violet-600 dark:text-violet-300">Tag: {{ substr($hex, 0, 4) }} · {{ strlen($hex) / 2 }} bytes</span>
                                     </div>
-                                    <p class="mt-3 text-xs text-slate-500">
-                                        Full ASN.1 decode happens on the eIM / eUICC side. The outer envelope is shown above; view the TLV tab for the raw bytes.
-                                    </p>
+                                    @php($tree = $walkTlv($hex))
+                                    @if ($tree)
+                                        <div class="mt-3 max-h-[480px] overflow-auto rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-950">
+                                            {!! $renderTree($tree) !!}
+                                        </div>
+                                    @else
+                                        <p class="mt-3 text-xs text-slate-500">Couldn't parse TLV tree (truncated or non-DER).</p>
+                                    @endif
                                 @else
                                     <p class="py-12 text-center text-sm text-slate-400">No ASN.1 structure in this JSON body.</p>
                                 @endif

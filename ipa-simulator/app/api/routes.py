@@ -71,6 +71,26 @@ async def list_devices():
     return {"devices": devices}
 
 
+@router.get("/api/ipa/polling")
+async def list_polling():
+    """List active background polling sessions, one per EID."""
+    out = []
+    for eid, session in esipa_handler.sessions.items():
+        if not session.polling:
+            continue
+        out.append({
+            "eid": eid,
+            "eimId": session.eim_id,
+            "eimFqdn": session.eim_fqdn,
+            "pollInterval": session.poll_interval,
+            "startedAt": session.started_polling_at,
+            "lastPolledAt": session.last_polled_at,
+            "operationsProcessed": session.operations_processed,
+            "errorCount": session.error_count,
+        })
+    return {"polling": out}
+
+
 @router.get("/api/ipa/devices/{eid}")
 async def get_device(eid: str):
     session = esipa_handler.sessions.get(eid)

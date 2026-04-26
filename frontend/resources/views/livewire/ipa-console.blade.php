@@ -76,13 +76,19 @@
                             <div class="font-medium">{{ $op['label'] }}</div>
                             <div class="text-xs text-slate-500">{{ $op['description'] }}</div>
                         </div>
-                        <button wire:click="run('{{ $key }}')"
-                                wire:loading.attr="disabled"
-                                @disabled(count($selectedIds) === 0)
-                                class="shrink-0 rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">
-                            <span wire:loading.remove wire:target="run('{{ $key }}')">Run</span>
-                            <span wire:loading wire:target="run('{{ $key }}')">Running…</span>
-                        </button>
+                        <div class="flex shrink-0 items-center gap-2">
+                            @if ($key === 'start_polling')
+                                <label class="text-xs text-slate-500" for="pollIntervalSec">every</label>
+                                <input wire:model="pollIntervalSec" id="pollIntervalSec" type="number" min="1" max="3600"
+                                       class="w-16 rounded border-slate-300 px-1 py-0.5 text-xs dark:border-slate-700 dark:bg-slate-950">
+                                <span class="text-xs text-slate-500">s</span>
+                            @endif
+                            <button wire:click="run('{{ $key }}')"
+                                    @disabled(count($selectedIds) === 0)
+                                    class="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">
+                                Run
+                            </button>
+                        </div>
                     </div>
                 @endforeach
             </div>

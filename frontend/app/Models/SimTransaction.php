@@ -13,6 +13,7 @@ class SimTransaction extends Model
         'device_id',
         'eid',
         'operation',
+        'polling_session_key',
         'status',
         'result_summary',
         'duration_ms',

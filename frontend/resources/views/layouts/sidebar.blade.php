@@ -4,6 +4,7 @@
         ['label' => 'Devices',        'route' => 'devices.index',      'icon' => 'cpu'],
         ['label' => 'IPA Console',    'route' => 'ipa.console',        'icon' => 'terminal'],
         ['label' => 'Transactions',   'route' => 'transactions.index', 'icon' => 'list'],
+        ['label' => 'Active Polling', 'route' => 'polling.index',      'icon' => 'activity'],
         ['label' => 'Architecture',   'route' => 'architecture',       'icon' => 'diagram'],
         ['label' => 'Server Status',  'route' => 'server.status',      'icon' => 'activity'],
     ];

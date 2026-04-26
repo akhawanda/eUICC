@@ -64,7 +64,23 @@
             </header>
 
             <div class="p-4 sm:p-6">
-                @if (session('status'))
+                @if (session('toast'))
+                    @php($t = session('toast'))
+                    <div class="mb-4 flex items-start justify-between gap-3 rounded border px-4 py-3 text-sm
+                        {{ ($t['type'] ?? 'info') === 'success' ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100' : '' }}
+                        {{ ($t['type'] ?? 'info') === 'error'   ? 'border-rose-300 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-100' : '' }}
+                        {{ ($t['type'] ?? 'info') === 'info'    ? 'border-indigo-300 bg-indigo-50 text-indigo-800 dark:border-indigo-800 dark:bg-indigo-950 dark:text-indigo-100' : '' }}">
+                        <div class="min-w-0">
+                            <div class="font-medium">{{ $t['title'] ?? '' }}</div>
+                            @if (! empty($t['message']))
+                                <div class="mt-0.5 text-xs opacity-90">{{ $t['message'] }}</div>
+                            @endif
+                            @if (! empty($t['link']))
+                                <a href="{{ $t['link'] }}" class="mt-1 inline-block text-xs underline opacity-90 hover:opacity-100">{{ $t['linkLabel'] ?? 'View →' }}</a>
+                            @endif
+                        </div>
+                    </div>
+                @elseif (session('status'))
                     <div class="mb-4 rounded border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
                         {{ session('status') }}
                     </div>

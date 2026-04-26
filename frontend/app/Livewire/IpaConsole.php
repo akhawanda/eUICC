@@ -21,6 +21,7 @@ class IpaConsole extends Component
     public string $matchingId = '';
     public string $activationCode = '';
     public int $cancelReason = 0;
+    public int $pollIntervalSec = 30;
 
     public ?IpaSession $lastSession = null;
 
@@ -40,7 +41,7 @@ class IpaConsole extends Component
             'start_polling' => [
                 'label' => 'Start ESipa Polling',
                 'description' => 'Begin periodic eIM polling for selected devices.',
-                'fields' => [],
+                'fields' => ['pollIntervalSec'],
                 'build' => fn (Device $d) => [
                     'method' => 'post',
                     'path' => "/api/ipa/esipa/{$d->eid}/start-polling",
@@ -153,6 +154,7 @@ class IpaConsole extends Component
             if (! $push['ok']) {
                 $results[$d->eid] = ['ok' => false, 'status' => $push['status'], 'body' => 'eUICC push failed: '.json_encode($push['body']), 'ms' => 0];
                 $this->finalizeTx($tx, 'failed', 'eUICC push failed (HTTP '.$push['status'].')');
+                $this->notifyForTx($tx->fresh(), $operation, $catalog[$operation]['label']);
                 continue;
             }
 
@@ -161,23 +163,33 @@ class IpaConsole extends Component
             if (! $eim) {
                 $results[$d->eid] = ['ok' => false, 'status' => 0, 'body' => 'Device has no eIM association.', 'ms' => 0];
                 $this->finalizeTx($tx, 'failed', 'No eIM association on device');
+                $this->notifyForTx($tx->fresh(), $operation, $catalog[$operation]['label']);
                 continue;
             }
             $regPayload = [
                 'eid' => $d->eid,
                 'eimId' => $eim->eim_id,
                 'eimFqdn' => $eim->eim_fqdn,
-                'pollInterval' => 30,
+                'pollInterval' => max(1, $this->pollIntervalSec),
             ];
             $this->recordRequest($tx, 'register_ipa', 'ipa', 'POST', '/api/ipa/devices', $regPayload);
             $t0 = microtime(true);
-            $reg = $sim->registerWithIpa($d);
+            $reg = $sim->registerWithIpa($d, max(1, $this->pollIntervalSec));
             $this->recordResponse($tx, 'register_ipa', 'ipa', 'POST', '/api/ipa/devices', $reg, (int) ((microtime(true) - $t0) * 1000));
 
             if (! $reg['ok']) {
                 $results[$d->eid] = ['ok' => false, 'status' => $reg['status'], 'body' => $reg['body'], 'ms' => 0];
                 $this->finalizeTx($tx, 'failed', 'IPA register failed (HTTP '.$reg['status'].')');
+                $this->notifyForTx($tx->fresh(), $operation, $catalog[$operation]['label']);
                 continue;
+            }
+
+            // Tag this tx with the active polling session for this EID, if any.
+            // Done after register (which is idempotent and doesn't disturb running
+            // sessions) so the tag reflects the session as it existed at the moment
+            // the user triggered this op.
+            if ($key = $sim->activePollingKey($d->eid)) {
+                $tx->update(['polling_session_key' => $key]);
             }
 
             $readyDevices[] = $d;
@@ -226,10 +238,16 @@ class IpaConsole extends Component
                             $this->recordTraceStep($tx, 'run_op', $traceStep);
                         }
                     }
-                    $summary = $r['ok']
-                        ? 'OK'
-                        : (is_string($r['body']) ? substr($r['body'], 0, 200) : 'HTTP '.($r['status'] ?? 0));
-                    $this->finalizeTx($tx, $r['ok'] ? 'completed' : 'failed', $summary);
+                    [$status, $summary] = $this->deriveOutcome($r);
+                    // For start_polling: the session starts during run_op, so
+                    // re-check now and tag if needed.
+                    if (! $tx->polling_session_key && $operation === 'start_polling') {
+                        if ($key = $sim->activePollingKey($eid)) {
+                            $tx->update(['polling_session_key' => $key]);
+                        }
+                    }
+                    $this->finalizeTx($tx, $status, $summary);
+                    $this->notifyForTx($tx->fresh(), $operation, $catalog[$operation]['label']);
                 }
             }
 
@@ -314,6 +332,154 @@ class IpaConsole extends Component
             'result_summary' => $summary,
             'duration_ms' => (int) $tx->created_at->diffInMilliseconds(now()),
         ]);
+    }
+
+    /**
+     * Push a toast event for a finalised transaction. Picks a tone + deep
+     * link appropriate for the operation (start/stop polling go to /polling,
+     * everything else to the tx detail page).
+     */
+    private function notifyForTx(SimTransaction $tx, string $operation, string $label): void
+    {
+        $type = $tx->status === 'completed' ? 'success' : 'failed';
+        $tail = '…'.substr($tx->eid, -8);
+        if ($operation === 'start_polling' && $tx->status === 'completed') {
+            $title = 'Polling started';
+            $message = "{$label} for {$tail}. " . ($tx->result_summary ?: 'Background poll cycle running.');
+            $link = route('polling.index');
+            $linkLabel = 'View on /polling →';
+            $type = 'info';
+        } elseif ($operation === 'stop_polling' && $tx->status === 'completed') {
+            $title = 'Polling stopped';
+            $message = "{$label} for {$tail}.";
+            $link = route('polling.index');
+            $linkLabel = 'View on /polling →';
+            $type = 'info';
+        } elseif ($tx->status === 'completed') {
+            $title = "{$label} done";
+            $message = "Tx #{$tx->id} · {$tx->result_summary}";
+            $link = route('transactions.show', $tx);
+            $linkLabel = "Open tx #{$tx->id} →";
+            $type = 'success';
+        } else {
+            $title = "{$label} failed";
+            $message = "Tx #{$tx->id} · " . ($tx->result_summary ?: 'see transaction for details');
+            $link = route('transactions.show', $tx);
+            $linkLabel = "Open tx #{$tx->id} →";
+            $type = 'error';
+        }
+
+        session()->flash('toast', [
+            'type' => $type,
+            'title' => $title,
+            'message' => $message,
+            'link' => $link,
+            'linkLabel' => $linkLabel,
+        ]);
+    }
+
+    /**
+     * Derive operational status from the IPA's response body.
+     *
+     * Returns [status, summary] where status reflects whether the requested
+     * operation actually achieved its goal — not just whether the HTTP call
+     * succeeded. eIM marks queue rows `failed` for non-zero PSMO results
+     * and parsing/transport failures; we mirror that here so the eUICC
+     * dashboard tells the same story.
+     *
+     * Failure detection layers, in order:
+     *   1. HTTP non-2xx
+     *   2. Top-level `error` field (e.g., device_not_registered)
+     *   3. `result.euiccPackageError` (eUICC rejected: unknownEim, counterMismatch)
+     *   4. Per-op failures inside `result.euiccPackageResult`
+     *   5. `eimResponse.error` after a successful relay (eIM didn't ack)
+     *   6. Known-failure `status` values (parse / transport / dispatch)
+     *   7. Default: completed
+     */
+    private function deriveOutcome(array $r): array
+    {
+        if (! ($r['ok'] ?? false)) {
+            $msg = is_string($r['body'] ?? null)
+                ? substr($r['body'], 0, 200)
+                : 'HTTP '.($r['status'] ?? 0);
+            return ['failed', $msg];
+        }
+
+        $body = is_array($r['body'] ?? null) ? $r['body'] : null;
+        if (! $body) {
+            return ['completed', 'OK'];
+        }
+
+        if (! empty($body['error'])) {
+            return ['failed', is_string($body['error']) ? $body['error'] : json_encode($body['error'])];
+        }
+
+        $pkgError = $body['result']['euiccPackageError'] ?? null;
+        if ($pkgError) {
+            return ['failed', 'euiccPackageError: '.$pkgError];
+        }
+
+        $opResults = $body['result']['euiccPackageResult'] ?? null;
+        if (is_array($opResults)) {
+            $bad = collect($opResults)
+                ->filter(fn ($o) => ($o['result'] ?? null) !== 'ok')
+                ->map(fn ($o) => ($o['action'] ?? '?').': '.($o['result'] ?? '?'))
+                ->values()
+                ->all();
+            if ($bad) {
+                return ['failed', implode(' · ', $bad)];
+            }
+            $good = collect($opResults)
+                ->map(fn ($o) => ($o['action'] ?? '?').': ok')
+                ->implode(' · ');
+            $tail = $this->eimAckTail($body);
+            return ['completed', trim(($good ?: 'OK').$tail)];
+        }
+
+        $status = $body['status'] ?? null;
+        $failureStatuses = [
+            'eim_unreachable', 'euicc_unreachable',
+            'invalid_euicc_package', 'invalid_download_trigger',
+            'unknown_package_type',
+            'auth_failed', 'download_failed', 'failed',
+            'error',
+        ];
+        if (in_array($status, $failureStatuses, true)) {
+            $detail = $body['error']
+                ?? $body['hint']
+                ?? ($body['code'] !== null ? 'code='.$body['code'] : null)
+                ?? ($body['httpStatus'] ?? null);
+            return ['failed', $status.($detail ? ': '.$detail : '')];
+        }
+
+        $okStatuses = [
+            'profile_installed', 'data_collected', 'no_package',
+            'polling_started', 'polling_stopped', 'already_polling',
+            'euicc_package_processed',
+        ];
+        if (in_array($status, $okStatuses, true)) {
+            $tail = $this->eimAckTail($body);
+            return ['completed', $status.$tail];
+        }
+
+        if ($status) {
+            return ['failed', $status];
+        }
+
+        return ['completed', 'OK'];
+    }
+
+    /**
+     * If the IPA reported the result back to eIM and got a non-Executed-Success
+     * response, surface that — the eUICC did its job but eIM rejected the relay.
+     */
+    private function eimAckTail(array $body): string
+    {
+        $eim = $body['eimResponse'] ?? null;
+        if (is_array($eim) && ! empty($eim['error'])) {
+            return ' (eIM relay failed: '.$eim['error'].')';
+        }
+        return '';
     }
 
     public function render()

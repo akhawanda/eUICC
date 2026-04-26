@@ -75,6 +75,8 @@ class DownloadSession:
     server_address: str
     euicc_challenge: bytes
     server_challenge: bytes | None = None
+    server_public_key: object = None  # EllipticCurvePublicKey, captured during AuthenticateServer
+    euicc_signature1: bytes = b""  # the eUICC's own signature1 — needed as TBS suffix for smdpSignature2
     euicc_otpk_private: object = None  # EllipticCurvePrivateKey
     euicc_otpk_public: bytes = b""
     smdp_otpk_public: bytes = b""

@@ -50,7 +50,7 @@ class Es10bHandler:
         self.pki = pki
         self.ecdsa = EcdsaEngine()
         self.codec = Asn1Codec()
-        self.cert_validator = CertChainValidator([pki.ci.certificate])
+        self.cert_validator = CertChainValidator(pki.get_trusted_ci_certs())
 
     # ------------------------------------------------------------------
     # GetEuiccInfo1 (BF20)
@@ -62,17 +62,16 @@ class Es10bHandler:
 
         Contains:
         - SVN (SGP.22 version)
-        - CI PKI IDs for verification and signing
+        - CI PKI IDs for verification (all trusted roots — own + GSMA TestCI)
+        - CI PKI ID for signing (own only — we only have our own private key)
 
         This is sent BEFORE mutual authentication so it must not
         contain sensitive info.
         """
-        ci_pki_id = self.pki.get_ci_pki_id()
-
         return {
             "svn": self.euicc.version_to_bytes(self.euicc.svn),
-            "euiccCiPKIdListForVerification": [ci_pki_id],
-            "euiccCiPKIdListForSigning": [ci_pki_id],
+            "euiccCiPKIdListForVerification": self.pki.get_trusted_ci_pkids(),
+            "euiccCiPKIdListForSigning": [self.pki.get_ci_pki_id()],
         }
 
     # ------------------------------------------------------------------
@@ -96,10 +95,18 @@ class Es10bHandler:
             "extCardResource": self.euicc.ext_card_resource_bytes(),
             "uiccCapability": self.euicc.uicc_capability,
             "rspCapability": self.euicc.rsp_capability,
-            "euiccCiPKIdListForVerification": [ci_pki_id],
+            "euiccCiPKIdListForVerification": self.pki.get_trusted_ci_pkids(),
             "euiccCiPKIdListForSigning": [ci_pki_id],
+            # ppVersion + sasAcreditationNumber are MANDATORY in SGP.22 v3
+            # EUICCInfo2 (untagged), even when their content isn't meaningful
+            # for a sim. Use zero/empty values to satisfy the schema.
+            "ppVersion": b"\x00\x00\x00",
+            "sasAcreditationNumber": "",
             "certificationDataObject": {
-                "platformLabel": self.euicc.platform_label,
+                "platformLabel": self.euicc.platform_label or "ConnectX-eUICC-Sim",
+                # SM-DP+'s decoder treats discoveryBaseURL as required despite
+                # the OPTIONAL marker; supply a placeholder URL.
+                "discoveryBaseURL": "https://euicc.connectxiot.com",
             },
             # SGP.32 IoT extensions
             "ipaMode": self.euicc.ipa_mode,
@@ -148,6 +155,7 @@ class Es10bHandler:
         euicc_ci_pkid: bytes,
         server_certificate_der: bytes,
         ctx_params1: dict | None = None,
+        server_signed1_raw: bytes | None = None,
     ) -> dict:
         """
         Verify SM-DP+ server authentication and respond with eUICC proof.
@@ -163,10 +171,18 @@ class Es10bHandler:
         if session is None:
             return self._auth_error(b"\x00" * 16, 8)  # invalidTransactionId
 
-        # Step 1: Verify CI PKI ID
-        ci_pki_id = self.pki.get_ci_pki_id()
-        if euicc_ci_pkid != ci_pki_id:
-            logger.warning("unsupported_ci_pkid", received=euicc_ci_pkid.hex())
+        # Step 1: Verify CI PKI ID is in our trusted set (own + extras like GSMA TestCI).
+        # Some SM-DP+ implementations send the SKI wrapped as a DER OCTET STRING
+        # (`04 14 <20 bytes>`); strip that wrapper before comparing.
+        if len(euicc_ci_pkid) == 22 and euicc_ci_pkid[:2] == b"\x04\x14":
+            euicc_ci_pkid = euicc_ci_pkid[2:]
+        trusted_ci_pkids = self.pki.get_trusted_ci_pkids()
+        if euicc_ci_pkid not in trusted_ci_pkids:
+            logger.warning(
+                "unsupported_ci_pkid",
+                received=euicc_ci_pkid.hex(),
+                trusted=[p.hex() for p in trusted_ci_pkids],
+            )
             return self._auth_error(
                 server_signed1.get("transactionId", b"\x00" * 16), 3
             )
@@ -185,8 +201,13 @@ class Es10bHandler:
                 server_signed1.get("transactionId", b"\x00" * 16), error_code
             )
 
-        # Step 3: Verify server signature using canonical DER encoding
-        tbs_data = self.codec.encode_server_signed1(server_signed1)
+        # Step 3: Verify server signature.
+        # SGP.22 §5.7.13 says the signature is computed over the SS1 DER bytes
+        # exactly as the SM-DP+ encoded them. Re-encoding via asn1tools can
+        # diverge in subtle DER details (length forms, AUTOMATIC TAGS edge
+        # cases) so prefer the raw bytes the IPA forwards from the wire and
+        # only fall back to a canonical re-encode for legacy/test paths.
+        tbs_data = server_signed1_raw or self.codec.encode_server_signed1(server_signed1)
         if not self.ecdsa.verify(server_public_key, server_signature1, tbs_data):
             logger.warning("invalid_server_signature")
             return self._auth_error(
@@ -213,19 +234,50 @@ class Es10bHandler:
         session.transaction_id = transaction_id
         session.server_address = server_address
         session.server_challenge = server_challenge
+        session.server_public_key = server_public_key  # used by PrepareDownload sig verify
         session.authenticated = True
 
-        # Step 6: Build eUICC response
+        # Step 6: Build eUICC response. SGP.22 v3 makes ctxParams1 a mandatory
+        # field of EuiccSigned1; we echo what the SM-DP+ sent (via ctxParams1
+        # in AuthenticateServerRequest) and default to an empty common-auth
+        # block when the IPA didn't pass one through.
+        # asn1tools represents CHOICE as a (alternative_name, value) tuple.
+        # CtxParams1 ::= CHOICE { ctxParamsForCommonAuthentication ... }
+        default_common = {
+            "matchingId": "",
+            "deviceInfo": {
+                "tac": b"\x00\x00\x00\x00",
+                "deviceCapabilities": {},
+            },
+        }
+        # JSON-over-HTTP serialises Python tuples as 2-element lists, so accept
+        # both forms.
+        if isinstance(ctx_params1, (list, tuple)) and len(ctx_params1) == 2:
+            echo_ctx = (ctx_params1[0], ctx_params1[1])
+        elif isinstance(ctx_params1, dict) and "ctxParamsForCommonAuthentication" in ctx_params1:
+            echo_ctx = ("ctxParamsForCommonAuthentication", ctx_params1["ctxParamsForCommonAuthentication"])
+        else:
+            echo_ctx = ("ctxParamsForCommonAuthentication", default_common)
+        # Inner deviceInfo.tac may arrive as hex string from JSON — convert.
+        if isinstance(echo_ctx[1], dict):
+            di = echo_ctx[1].get("deviceInfo")
+            if isinstance(di, dict) and isinstance(di.get("tac"), str):
+                try:
+                    di["tac"] = bytes.fromhex(di["tac"])
+                except ValueError:
+                    di["tac"] = b"\x00\x00\x00\x00"
         euicc_signed1 = {
             "transactionId": transaction_id,
             "serverAddress": server_address,
             "serverChallenge": server_challenge,
             "euiccInfo2": self.get_euicc_info2(),
+            "ctxParams1": echo_ctx,
         }
 
         # Sign with eUICC private key using canonical DER
         tbs_euicc = self.codec.encode_euicc_signed1(euicc_signed1)
         euicc_signature1 = self.ecdsa.sign(self.pki.euicc.private_key, tbs_euicc)
+        session.euicc_signature1 = euicc_signature1  # required as part of TBS for smdpSignature2 in PrepareDownload
 
         logger.info(
             "server_authenticated",
@@ -237,6 +289,7 @@ class Es10bHandler:
         return {
             "authenticateResponseOk": {
                 "euiccSigned1": euicc_signed1,
+                "euiccSigned1Raw": tbs_euicc,  # raw DER the IPA must relay verbatim
                 "euiccSignature1": euicc_signature1,
                 "euiccCertificate": self.pki.get_euicc_cert_der(),
                 "eumCertificate": self.pki.get_eum_cert_der(),
@@ -253,13 +306,16 @@ class Es10bHandler:
         smdp_signature2: bytes,
         hash_cc: bytes | None = None,
         smdp_certificate_der: bytes | None = None,
+        smdp_signed2_raw: bytes | None = None,
     ) -> dict:
         """
         Prepare for profile download — generate OTPK and derive session keys.
 
         Steps per SGP.22 §5.7.5:
         1. Verify the transaction ID matches active session
-        2. Verify SM-DP+ signature over smdpSigned2
+        2. Verify SM-DP+ signature over smdpSigned2 (against the raw DER bytes
+           the SM-DP+ actually signed — re-encoding via asn1tools can diverge
+           in DER edge cases, so we use the wire bytes when available).
         3. Generate eUICC OTPK (one-time key pair)
         4. Derive SCP03t session keys via ECDH
         5. Return euiccSigned2 + euiccSignature2
@@ -270,7 +326,55 @@ class Es10bHandler:
 
         transaction_id = smdp_signed2.get("transactionId", b"")
         if transaction_id != session.transaction_id:
-            return self._download_error(transaction_id, 127)
+            logger.warning(
+                "prepare_download_txn_mismatch",
+                received_hex=transaction_id.hex() if isinstance(transaction_id, (bytes, bytearray)) else str(transaction_id),
+                received_type=type(transaction_id).__name__,
+                expected_hex=session.transaction_id.hex() if isinstance(session.transaction_id, (bytes, bytearray)) else str(session.transaction_id),
+                smdp_signed2_keys=list(smdp_signed2.keys()),
+            )
+            return self._download_error(transaction_id, 5)  # invalidTransactionId
+
+        # Step 2: verify SM-DP+ signature over SmdpSigned2.
+        # Per SGP.22 §5.7.5 the signature is by CERT.DPpb (separate from the
+        # CERT.DPauth used in AuthenticateServer). The IPA forwards the DPpb
+        # cert as `smdp_certificate_der`; we validate it against any trusted
+        # CI in our list, then use its public key to verify smdp_signature2
+        # over the raw SmdpSigned2 DER bytes.
+        if smdp_signed2_raw:
+            sig_pub_key = None
+            cert_source = "none"
+            if smdp_certificate_der:
+                for ci_pkid in self.pki.get_trusted_ci_pkids():
+                    is_valid, err, pub_key = self.cert_validator.validate_server_cert(
+                        smdp_certificate_der, ci_pkid
+                    )
+                    if is_valid:
+                        sig_pub_key = pub_key
+                        cert_source = "dppb"
+                        break
+            if sig_pub_key is None:
+                sig_pub_key = session.server_public_key
+                cert_source = "dpauth_fallback" if sig_pub_key else "none"
+            # Per SGP.22 §5.6.2 / §5.7.5, smdpSignature2 is computed over
+            # `SmdpSigned2 || euiccSignature1`, where euiccSignature1 is
+            # included with its [APPLICATION 55] TLV wrapper (5F 37 40 ...)
+            # — the SM-DP+ binds its response to the eUICC's prior signature.
+            es1_sig = session.euicc_signature1 or b""
+            tbs2 = smdp_signed2_raw + b"\x5F\x37\x40" + es1_sig
+            verified = sig_pub_key is not None and self.ecdsa.verify(
+                sig_pub_key, smdp_signature2, tbs2
+            )
+            logger.warning(
+                "smdp_sig2_check",
+                cert_source=cert_source,
+                sig_len=len(smdp_signature2),
+                tbs_len=len(smdp_signed2_raw),
+                verified=verified,
+                cert_present=bool(smdp_certificate_der),
+            )
+            if not verified:
+                return self._download_error(transaction_id, 2)  # invalidSignature
 
         # Generate eUICC one-time key pair
         otpk_private, otpk_public = self.ecdsa.generate_otpk()
@@ -288,12 +392,14 @@ class Es10bHandler:
 
         session.prepared = True
 
-        # Build response
+        # Build response — hashCc is OPTIONAL: omit the key entirely when not
+        # provided (asn1tools rejects None values for OPTIONAL bytes fields).
         euicc_signed2 = {
             "transactionId": transaction_id,
             "euiccOtpk": otpk_public,
-            "hashCc": hash_cc,
         }
+        if hash_cc:
+            euicc_signed2["hashCc"] = hash_cc
 
         tbs_data = self.codec.encode_euicc_signed2(euicc_signed2)
         euicc_signature2 = self.ecdsa.sign(self.pki.euicc.private_key, tbs_data)

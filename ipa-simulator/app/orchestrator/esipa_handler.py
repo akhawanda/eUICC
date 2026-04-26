@@ -34,6 +34,8 @@ class EsipaSession:
     last_result: dict = field(default_factory=dict)
     error_count: int = 0
     operations_processed: int = 0
+    started_polling_at: float | None = None
+    last_polled_at: float | None = None
 
 
 class EsipaHandler:
@@ -61,7 +63,15 @@ class EsipaHandler:
     async def register_device(
         self, eid: str, eim_id: str, eim_fqdn: str, poll_interval: int = 30
     ) -> EsipaSession:
-        """Register a device for ESipa polling."""
+        """Register a device for ESipa polling. If a session exists, update
+        the eIM coordinates + interval in place so the running poll loop
+        (if any) picks them up on the next sleep wake."""
+        existing = self.sessions.get(eid)
+        if existing is not None:
+            existing.eim_id = eim_id
+            existing.eim_fqdn = eim_fqdn
+            existing.poll_interval = poll_interval
+            return existing
         session = EsipaSession(
             eid=eid,
             eim_id=eim_id,
@@ -80,7 +90,9 @@ class EsipaHandler:
         if session.polling:
             return {"status": "already_polling"}
 
+        import time
         session.polling = True
+        session.started_polling_at = time.time()
         task = asyncio.create_task(self._poll_loop(session))
         self._poll_tasks[eid] = task
 
@@ -110,8 +122,10 @@ class EsipaHandler:
 
     async def _poll_loop(self, session: EsipaSession):
         """Background polling loop."""
+        import time
         while session.polling:
             try:
+                session.last_polled_at = time.time()
                 await self._process_poll(session)
                 session.error_count = 0
             except asyncio.CancelledError:
@@ -302,10 +316,16 @@ class EsipaHandler:
                 "sendResult": False,
             }
 
-        # DER-encode the result as ProvideEimPackageResult (BF50)
+        # DER-encode the result as ProvideEimPackageResult (BF50 > BF51 > A0 > SEQUENCE).
         try:
+            op_results = result.get("euiccPackageResult", [])
             result_der = self.codec.encode_euicc_package_result(
-                str(result).encode("utf-8")  # Raw result bytes
+                eim_id=relay_payload.get("eimId", ""),
+                counter_value=relay_payload.get("counterValue", 0),
+                transaction_id_hex=relay_payload.get("transactionId"),
+                seq_number=relay_payload.get("counterValue", 0),
+                operation_results=op_results if isinstance(op_results, list) else [],
+                eid_hex=relay_payload.get("eidValue") or session.eid,
             )
         except Exception as e:
             logger.warning("esep_result_encode_failed", eid=session.eid, error=str(e))
@@ -420,13 +440,36 @@ class EsipaHandler:
             "sendResult": True,
         }
 
-    async def _handle_download_trigger(self, session: EsipaSession, trigger: dict) -> dict:
+    async def _handle_download_trigger(self, session: EsipaSession, trigger) -> dict:
         """
         Handle profileDownloadTriggerRequest — initiate profile download.
 
         The eIM triggers the IPA to download a profile from SM-DP+.
         This kicks off the full ES9+/ES10b authentication dance.
+
+        `trigger` may be:
+          - base64-encoded BF54 DER (GSMA wire format from eIM-go)
+          - decoded dict with {activationCode, smdpAddress, matchingId}
         """
+        import base64
+        if isinstance(trigger, str):
+            try:
+                der_bytes = base64.b64decode(trigger)
+                trigger = self.codec.decode_profile_download_trigger_request(der_bytes)
+            except Exception as e:
+                logger.warning("download_trigger_decode_failed", eid=session.eid, error=str(e))
+                return {
+                    "status": "invalid_download_trigger",
+                    "error": f"failed to decode BF54: {e}",
+                    "sendResult": False,
+                }
+            logger.info(
+                "download_trigger_decoded",
+                eid=session.eid,
+                smdp=trigger.get("smdpAddress"),
+                matching_id=trigger.get("matchingId"),
+            )
+
         smdp_address = trigger.get("smdpAddress", "")
         activation_code = trigger.get("activationCode", "")
         matching_id = trigger.get("matchingId", "")
@@ -450,13 +493,14 @@ class EsipaHandler:
             activation_code=activation_code,
         )
 
-        # DER-encode as ProfileDownloadTriggerResult (BF54)
-        eim_txn_id = trigger.get("eimTransactionId")
+        # DER-encode as ProfileDownloadTriggerResult (BF50 > 5A + BF54).
+        eim_txn_id = trigger.get("transactionId") or trigger.get("eimTransactionId")
         error_code = None if download_session.state.value == "profile_installed" else 1
 
         result_der = self.codec.encode_profile_download_trigger_result(
             eim_transaction_id=eim_txn_id,
             error_code=error_code,
+            eid_hex=session.eid,
         )
 
         return {

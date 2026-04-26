@@ -28,6 +28,25 @@ class SimulatorClient
         return $this->health($this->ipaBase());
     }
 
+    /**
+     * Return the polling-session key for an EID if a background poll is
+     * currently running, else null. Key shape: `{eid}@{startedAtUnix}`.
+     */
+    public function activePollingKey(string $eid): ?string
+    {
+        try {
+            $resp = Http::timeout(3)->get($this->ipaBase().'/api/ipa/polling');
+            foreach ($resp->json('polling') ?? [] as $s) {
+                if (strcasecmp($s['eid'] ?? '', $eid) === 0 && ! empty($s['startedAt'])) {
+                    return $eid.'@'.(int) $s['startedAt'];
+                }
+            }
+        } catch (\Throwable) {
+            // network/IPA hiccup — caller treats null as "not in a polling session"
+        }
+        return null;
+    }
+
     protected function health(string $base): array
     {
         try {

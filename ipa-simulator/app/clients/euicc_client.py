@@ -86,18 +86,22 @@ class EuiccClient:
         server_signature1: str,
         ci_pkid: str,
         server_certificate_b64: str,
-        ctx_params1: dict | None = None,
+        ctx_params1=None,  # tuple (alt_name, value) | dict | None
+        server_signed1_raw_b64: str | None = None,
     ) -> dict:
         """ES10b.AuthenticateServer"""
+        body = {
+            "serverSigned1": server_signed1,
+            "serverSignature1": server_signature1,
+            "euiccCiPKIdToBeUsed": ci_pkid,
+            "serverCertificate": server_certificate_b64,
+            "ctxParams1": ctx_params1,
+        }
+        if server_signed1_raw_b64:
+            body["serverSigned1Raw"] = server_signed1_raw_b64
         resp = await self.client.post(
             f"/api/es10/{eid}/authenticate-server",
-            json={
-                "serverSigned1": server_signed1,
-                "serverSignature1": server_signature1,
-                "euiccCiPKIdToBeUsed": ci_pkid,
-                "serverCertificate": server_certificate_b64,
-                "ctxParams1": ctx_params1,
-            },
+            json=body,
         )
         resp.raise_for_status()
         return resp.json()
@@ -109,16 +113,20 @@ class EuiccClient:
         smdp_signature2: str,
         hash_cc: str | None = None,
         smdp_certificate_b64: str | None = None,
+        smdp_signed2_raw_b64: str | None = None,
     ) -> dict:
         """ES10b.PrepareDownload"""
+        body = {
+            "smdpSigned2": smdp_signed2,
+            "smdpSignature2": smdp_signature2,
+            "hashCc": hash_cc,
+            "smdpCertificate": smdp_certificate_b64,
+        }
+        if smdp_signed2_raw_b64:
+            body["smdpSigned2Raw"] = smdp_signed2_raw_b64
         resp = await self.client.post(
             f"/api/es10/{eid}/prepare-download",
-            json={
-                "smdpSigned2": smdp_signed2,
-                "smdpSignature2": smdp_signature2,
-                "hashCc": hash_cc,
-                "smdpCertificate": smdp_certificate_b64,
-            },
+            json=body,
         )
         resp.raise_for_status()
         return resp.json()

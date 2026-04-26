@@ -179,7 +179,10 @@ class AuthenticateServerRequest(BaseModel):
     serverSignature1: str  # hex
     euiccCiPKIdToBeUsed: str  # hex
     serverCertificate: str  # base64 DER
-    ctxParams1: dict | None = None
+    # ctxParams1 is a CHOICE — comes either as dict {"ctxParamsForCommonAuthentication": {...}}
+    # or as a 2-element list ["ctxParamsForCommonAuthentication", {...}] (JSON form of a Python tuple).
+    ctxParams1: dict | list | None = None
+    serverSigned1Raw: str | None = None  # base64 of the original DER SS1 from SM-DP+
 
 
 @router.post("/api/es10/{eid}/authenticate-server")
@@ -191,6 +194,7 @@ async def authenticate_server(eid: str, req: AuthenticateServerRequest):
     server_sig = bytes.fromhex(req.serverSignature1)
     ci_pkid = bytes.fromhex(req.euiccCiPKIdToBeUsed)
     server_cert = base64.b64decode(req.serverCertificate)
+    ss1_raw = base64.b64decode(req.serverSigned1Raw) if req.serverSigned1Raw else None
 
     result = inst.es10b.authenticate_server(
         server_signed1=server_signed1,
@@ -198,6 +202,7 @@ async def authenticate_server(eid: str, req: AuthenticateServerRequest):
         euicc_ci_pkid=ci_pkid,
         server_certificate_der=server_cert,
         ctx_params1=req.ctxParams1,
+        server_signed1_raw=ss1_raw,
     )
     return _bytes_to_hex(result)
 
@@ -207,6 +212,7 @@ class PrepareDownloadRequest(BaseModel):
     smdpSignature2: str  # hex
     hashCc: str | None = None  # hex
     smdpCertificate: str | None = None  # base64 DER
+    smdpSigned2Raw: str | None = None  # base64 of original DER bytes
 
 
 @router.post("/api/es10/{eid}/prepare-download")
@@ -217,24 +223,87 @@ async def prepare_download(eid: str, req: PrepareDownloadRequest):
     smdp_sig = bytes.fromhex(req.smdpSignature2)
     hash_cc = bytes.fromhex(req.hashCc) if req.hashCc else None
     smdp_cert = base64.b64decode(req.smdpCertificate) if req.smdpCertificate else None
+    smdp_signed2_raw = base64.b64decode(req.smdpSigned2Raw) if req.smdpSigned2Raw else None
 
     result = inst.es10b.prepare_download(
         smdp_signed2=smdp_signed2,
         smdp_signature2=smdp_sig,
         hash_cc=hash_cc,
         smdp_certificate_der=smdp_cert,
+        smdp_signed2_raw=smdp_signed2_raw,
     )
     return _bytes_to_hex(result)
 
 
 class LoadBppRequest(BaseModel):
-    boundProfilePackage: dict
+    # The SM-DP+ returns boundProfilePackage as a single base64-encoded DER
+    # blob (BF36); accept either that string form or a pre-parsed dict for
+    # tests. We decode + walk the DER on entry when string is provided.
+    boundProfilePackage: dict | str
+
+
+def _walk_bpp_der(der: bytes) -> dict:
+    """Minimal BPP TLV walk into {initialiseSecureChannelRequest,
+    firstSequenceOf87, sequenceOf88, secondSequenceOf87, sequenceOf86}.
+    Per SGP.22 §5.5.4 the BPP outer tag is BF36; inside there are tagged
+    SEQUENCEs that carry the SCP03t-encrypted profile elements."""
+    out: dict = {
+        "initialiseSecureChannelRequest": {},
+        "firstSequenceOf87": b"",
+        "sequenceOf88": b"",
+        "secondSequenceOf87": b"",
+        "sequenceOf86": b"",
+    }
+    if not der or der[:2] != b"\xBF\x36":
+        return out
+    pos = 2
+    body_len = der[pos]; pos += 1
+    if body_len & 0x80:
+        n = body_len & 0x7F
+        body_len = int.from_bytes(der[pos:pos + n], "big")
+        pos += n
+    end = pos + body_len
+    while pos < end:
+        tag = der[pos]; pos += 1
+        if pos >= end:
+            break
+        ln = der[pos]; pos += 1
+        if ln & 0x80:
+            n = ln & 0x7F
+            ln = int.from_bytes(der[pos:pos + n], "big")
+            pos += n
+        v = der[pos:pos + ln]; pos += ln
+        # Tags per SGP.22 BoundProfilePackage:
+        #   30 = initialiseSecureChannelRequest (SEQUENCE)
+        #   A0 = firstSequenceOf87 wrapper
+        #   A1 = sequenceOf88 wrapper
+        #   A2 = secondSequenceOf87 wrapper
+        #   A3 = sequenceOf86 wrapper
+        if tag == 0x30:
+            out["initialiseSecureChannelRequest"] = {"raw": v}
+        elif tag == 0xA0:
+            out["firstSequenceOf87"] = v
+        elif tag == 0xA1:
+            out["sequenceOf88"] = v
+        elif tag == 0xA2:
+            out["secondSequenceOf87"] = v
+        elif tag == 0xA3:
+            out["sequenceOf86"] = v
+    return out
 
 
 @router.post("/api/es10/{eid}/load-bpp")
 async def load_bound_profile_package(eid: str, req: LoadBppRequest):
     inst = _get_instance(eid)
-    bpp = _hex_to_bytes_dict(req.boundProfilePackage)
+    raw_bpp = req.boundProfilePackage
+    if isinstance(raw_bpp, str):
+        try:
+            der = base64.b64decode(raw_bpp)
+        except Exception:
+            der = bytes.fromhex(raw_bpp)
+        bpp = _walk_bpp_der(der)
+    else:
+        bpp = _hex_to_bytes_dict(raw_bpp)
     result = inst.es10b.load_bound_profile_package(bpp)
     return _bytes_to_hex(result)
 
@@ -414,12 +483,13 @@ async def process_apdu(eid: str, req: ApduRequest):
 
 
 def _bytes_to_hex(obj):
-    """Recursively convert bytes values to hex strings for JSON serialization."""
-    if isinstance(obj, bytes):
-        return obj.hex()
+    """Recursively convert bytes/bytearray values to hex strings for JSON
+    serialization. Handles tuples (CHOICE alternatives) too."""
+    if isinstance(obj, (bytes, bytearray, memoryview)):
+        return bytes(obj).hex()
     elif isinstance(obj, dict):
         return {k: _bytes_to_hex(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
+    elif isinstance(obj, (list, tuple)):
         return [_bytes_to_hex(v) for v in obj]
     return obj
 

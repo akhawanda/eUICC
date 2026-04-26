@@ -50,7 +50,9 @@ class DownloadSession:
     euicc_challenge: str = ""
     euicc_info1: dict = field(default_factory=dict)
     server_signed1: dict = field(default_factory=dict)
+    server_signed1_raw: str = ""  # base64 of original DER bytes from SM-DP+
     server_signature1: str = ""
+    euicc_signed1_raw: str = ""  # hex of EuiccSigned1 DER as the eUICC signed it
     server_certificate: str = ""
     ci_pkid: str = ""
     euicc_signed1: dict = field(default_factory=dict)
@@ -58,7 +60,9 @@ class DownloadSession:
     euicc_certificate: str = ""
     eum_certificate: str = ""
     smdp_signed2: dict = field(default_factory=dict)
+    smdp_signed2_raw: str = ""  # base64 of the original DER bytes from SM-DP+
     smdp_signature2: str = ""
+    smdp_certificate2: str = ""  # base64 DPpb cert for SmdpSigned2 verification
     euicc_signed2: dict = field(default_factory=dict)
     euicc_signature2: str = ""
     bpp: dict = field(default_factory=dict)
@@ -169,6 +173,7 @@ class ProfileDownloadOrchestrator:
 
         session.transaction_id = result.get("transactionId", "")
         session.server_signed1 = result.get("serverSigned1", {})
+        session.server_signed1_raw = result.get("serverSigned1Raw", "")
         session.server_signature1 = result.get("serverSignature1", "")
         session.server_certificate = result.get("serverCertificate", "")
         session.ci_pkid = result.get("euiccCiPKIdToBeUsed", "")
@@ -188,12 +193,27 @@ class ProfileDownloadOrchestrator:
     async def _step4_authenticate_server(self, session: DownloadSession):
         self._log_step(session, "step4", "IPA -> eUICC: AuthenticateServer")
 
+        # Per SGP.22 §5.6.1 the IPA constructs ctxParams1 with the matchingId
+        # extracted from the activation code, so the SM-DP+ can pick the
+        # right released profile during AuthenticateClient.
+        ctx_params1 = (
+            "ctxParamsForCommonAuthentication",
+            {
+                "matchingId": session.matching_id or "",
+                "deviceInfo": {
+                    "tac": "00000000",
+                    "deviceCapabilities": {},
+                },
+            },
+        )
         result = await self.euicc.authenticate_server(
             eid=session.eid,
             server_signed1=session.server_signed1,
             server_signature1=session.server_signature1,
             ci_pkid=session.ci_pkid,
             server_certificate_b64=session.server_certificate,
+            ctx_params1=ctx_params1,
+            server_signed1_raw_b64=getattr(session, "server_signed1_raw", "") or None,
         )
 
         if "authenticateResponseError" in result:
@@ -204,6 +224,7 @@ class ProfileDownloadOrchestrator:
 
         ok = result["authenticateResponseOk"]
         session.euicc_signed1 = ok["euiccSigned1"]
+        session.euicc_signed1_raw = ok.get("euiccSigned1Raw", "")  # hex from eUICC route
         session.euicc_signature1 = ok["euiccSignature1"]
         session.euicc_certificate = ok["euiccCertificate"]
         session.eum_certificate = ok.get("eumCertificate", "")
@@ -225,13 +246,16 @@ class ProfileDownloadOrchestrator:
             euicc_signature1=session.euicc_signature1,
             euicc_certificate=session.euicc_certificate,
             eum_certificate=session.eum_certificate,
+            euicc_signed1_raw_hex=session.euicc_signed1_raw or "",
         )
 
         if "error" in result:
             raise RuntimeError(f"AuthenticateClient failed: {result['error']}")
 
         session.smdp_signed2 = result.get("smdpSigned2", {})
+        session.smdp_signed2_raw = result.get("smdpSigned2Raw", "")
         session.smdp_signature2 = result.get("smdpSignature2", "")
+        session.smdp_certificate2 = result.get("smdpCertificate", "")  # DPpb cert (for SmdpSigned2 verify)
 
         session.state = DownloadState.CLIENT_AUTHENTICATED
 
@@ -248,6 +272,8 @@ class ProfileDownloadOrchestrator:
             eid=session.eid,
             smdp_signed2=session.smdp_signed2,
             smdp_signature2=session.smdp_signature2,
+            smdp_certificate_b64=session.smdp_certificate2 or None,
+            smdp_signed2_raw_b64=session.smdp_signed2_raw or None,
         )
 
         if "downloadResponseError" in result:
