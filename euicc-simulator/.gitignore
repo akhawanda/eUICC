@@ -15,6 +15,15 @@ env/
 *.der
 certs/*/
 !certs/.gitkeep
+
+# Whitelist publicly-distributable trust material. Per-EID dirs
+# (certs/<EID>/) stay excluded — auto-generated keys per deployment.
+!certs/_trusted_cis/
+!certs/_trusted_cis/*.crt
+!certs/_trusted_cis/*.pem
+!certs/sgp26_nist/
+!certs/sgp26_nist/*.pem
+!certs/sgp26_nist/*.der
 .idea/
 .vscode/
 *.swp

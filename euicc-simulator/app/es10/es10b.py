@@ -415,6 +415,13 @@ class Es10bHandler:
             "downloadResponseOk": {
                 "euiccSigned2": euicc_signed2,
                 "euiccSignature2": euicc_signature2,
+                # Canonical DER as the eUICC actually signed it. Per the
+                # raw-bytes-passthrough pattern (SGP.22 conformance memo),
+                # the IPA must wrap THESE bytes — not asn1tools-re-encoded
+                # bytes — into the outer PrepareDownloadResponse envelope,
+                # because the SM-DP+ verifies smdpSignature2 against this
+                # exact byte sequence (see §5.6.3 / §5.7.5 binding).
+                "euiccSigned2Raw": tbs_data,
             }
         }
 

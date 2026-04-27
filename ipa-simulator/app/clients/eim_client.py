@@ -13,6 +13,7 @@ import structlog
 import httpx
 
 from ..transport.trace import EVENT_HOOKS
+from ..transport.ca_bundle import CA_BUNDLE_PATH
 
 logger = structlog.get_logger()
 
@@ -46,6 +47,7 @@ class EimClient:
             timeout=timeout,
             headers={"Content-Type": "application/json"},
             event_hooks=EVENT_HOOKS,
+            verify=CA_BUNDLE_PATH,
         )
 
     async def close(self):

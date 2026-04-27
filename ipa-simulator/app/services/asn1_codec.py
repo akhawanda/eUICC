@@ -242,6 +242,30 @@ class Asn1Codec:
     def encode_base64(self, type_name: str, data) -> str:
         return base64.b64encode(self.encode(type_name, data)).decode("ascii")
 
+    def encode_euicc_info1_b64(self, info1: dict) -> str:
+        """Encode EuiccInfo1 as base64 DER for ES9+.InitiateAuthentication.
+
+        Per SGP.22 §5.6.1 the SM-DP+ expects `euiccInfo1` on the JSON wire
+        as base64-encoded DER of the EuiccInfo1 ASN.1 structure (BF20),
+        NOT a JSON-shaped object. Production SM-DP+ implementations
+        (e.g. Thales/wbg.prod.ondemandconnectivity.com) reject the
+        JSON-shaped form with HTTP 400.
+
+        Input: dict with hex-string fields as the eUICC sim emits via
+        `_bytes_to_hex` — `svn`, `euiccCiPKIdListForVerification`,
+        `euiccCiPKIdListForSigning`. Hex is converted to bytes here.
+        """
+        def _h2b(s: str) -> bytes:
+            return bytes.fromhex(s) if isinstance(s, str) else (s or b"")
+
+        encoded: dict = {
+            "euiccCiPKIdListForVerification": [_h2b(s) for s in info1.get("euiccCiPKIdListForVerification", [])],
+            "euiccCiPKIdListForSigning": [_h2b(s) for s in info1.get("euiccCiPKIdListForSigning", [])],
+        }
+        if info1.get("svn"):
+            encoded["svn"] = _h2b(info1["svn"])
+        return self.encode_base64("EuiccInfo1", encoded)
+
     def encode_provide_eim_package_result(self, data: tuple) -> str:
         """
         Encode ProvideEimPackageResult to base64 DER for sending to eIM.

@@ -15,6 +15,14 @@ env/
 *.der
 certs/*/
 !certs/.gitkeep
+
+# Whitelist publicly-distributable trust material so a fresh checkout
+# can run/deploy without needing to scp roots manually. Per-EID cert
+# directories (e.g. certs/<EID>/) stay excluded — they're auto-generated
+# locally and contain unique private keys per deployment.
+!ipa-simulator/certs/tls_roots/
+!ipa-simulator/certs/tls_roots/*.pem
+!ipa-simulator/certs/tls_roots/*.crt
 .idea/
 .vscode/
 *.swp

@@ -214,14 +214,19 @@ class Es10bIotHandler:
         """Execute a Profile State Management Operation."""
         action = psmo.get("action", "")
         iccid = psmo.get("iccid")
-        # The IPA decoder ships the ICCID as a hex string (JSON-safe); the
-        # eUICC stores it as raw 10-byte BCD. Normalise here so callers
-        # that pass either shape both work.
+        # The IPA decoder ships the ICCID as a hex string of the BCD bytes
+        # exactly as they appeared on the SGP.32 wire. Internally the eUICC
+        # stores the iccid in the OTHER nibble order (matching what
+        # `/profiles` returns and what direct ES10c calls accept), so we
+        # nibble-swap here to bring the two halves of the path into sync.
+        # Pass-through fallback if the value is already in storage form
+        # (lookup-by-equality will fail naturally; semantics unchanged).
         if isinstance(iccid, str):
             try:
-                iccid = bytes.fromhex(iccid)
+                raw = bytes.fromhex(iccid)
             except ValueError:
-                iccid = None
+                raw = None
+            iccid = bytes((b >> 4) | ((b & 0x0F) << 4) for b in raw) if raw is not None else None
 
         iccid_hex = iccid.hex() if isinstance(iccid, (bytes, bytearray)) else (iccid or "")
 

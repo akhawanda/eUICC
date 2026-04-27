@@ -64,6 +64,7 @@ class DownloadSession:
     smdp_signature2: str = ""
     smdp_certificate2: str = ""  # base64 DPpb cert for SmdpSigned2 verification
     euicc_signed2: dict = field(default_factory=dict)
+    euicc_signed2_raw: str = ""  # hex of canonical EuiccSigned2 DER as the eUICC signed it
     euicc_signature2: str = ""
     bpp: dict = field(default_factory=dict)
     result: dict = field(default_factory=dict)
@@ -247,6 +248,7 @@ class ProfileDownloadOrchestrator:
             euicc_certificate=session.euicc_certificate,
             eum_certificate=session.eum_certificate,
             euicc_signed1_raw_hex=session.euicc_signed1_raw or "",
+            smdp_address=session.smdp_address,
         )
 
         if "error" in result:
@@ -285,6 +287,7 @@ class ProfileDownloadOrchestrator:
         ok = result["downloadResponseOk"]
         session.euicc_signed2 = ok["euiccSigned2"]
         session.euicc_signature2 = ok["euiccSignature2"]
+        session.euicc_signed2_raw = ok.get("euiccSigned2Raw", "")  # hex from eUICC route
 
         session.state = DownloadState.DOWNLOAD_PREPARED
 
@@ -301,6 +304,8 @@ class ProfileDownloadOrchestrator:
             transaction_id=session.transaction_id,
             euicc_signed2=session.euicc_signed2,
             euicc_signature2=session.euicc_signature2,
+            euicc_signed2_raw_hex=session.euicc_signed2_raw or "",
+            smdp_address=session.smdp_address,
         )
 
         if "error" in result:
@@ -362,6 +367,7 @@ class ProfileDownloadOrchestrator:
             await self.smdp.cancel_session(
                 session.transaction_id,
                 euicc_result["cancelSessionResponseOk"],
+                smdp_address=session.smdp_address,
             )
 
         session.state = DownloadState.CANCELLED

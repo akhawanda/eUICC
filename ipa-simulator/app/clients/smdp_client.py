@@ -15,6 +15,7 @@ import structlog
 import httpx
 
 from ..transport.trace import EVENT_HOOKS
+from ..transport.ca_bundle import CA_BUNDLE_PATH
 
 logger = structlog.get_logger()
 
@@ -119,16 +120,32 @@ class SmdpClient:
     """
 
     def __init__(self, base_url: str, timeout: float = 60.0):
-        self.base_url = base_url.rstrip("/")
+        # Default base_url is a fallback only — every method picks the real
+        # SM-DP+ host from the activation code (per SGP.22 §3.1.1: the eUICC
+        # contacts the SM-DP+ named in the activation code, NOT a configured
+        # default). We keep one httpx client without a base_url so each call
+        # can target a different host.
+        self.default_base_url = base_url.rstrip("/")
+        self.timeout = timeout
         self.client = httpx.AsyncClient(
-            base_url=self.base_url,
             timeout=timeout,
             headers={"Content-Type": "application/json"},
             event_hooks=EVENT_HOOKS,
+            verify=CA_BUNDLE_PATH,
         )
 
     async def close(self):
         await self.client.aclose()
+
+    @staticmethod
+    def _normalise_base(addr: str) -> str:
+        """Turn an SM-DP+ address from the activation code into a base URL."""
+        if not addr:
+            return ""
+        s = addr.strip().rstrip("/")
+        if s.startswith(("http://", "https://")):
+            return s
+        return f"https://{s}"
 
     async def initiate_authentication(
         self,
@@ -140,20 +157,24 @@ class SmdpClient:
         ES9+.InitiateAuthentication — Start mutual authentication.
 
         Per SGP.22 §5.6.1, binary fields on the JSON wire are base64-
-        encoded. The eUICC sim hands us hex strings internally; convert
-        here so the SM-DP+ (which always base64-decodes) sees the right
-        bytes.
+        encoded. `euiccInfo1` is base64-encoded DER of the EuiccInfo1
+        ASN.1 structure (BF20), NOT a JSON object — production SM-DP+
+        decoders reject the JSON-shaped form with HTTP 400.
         """
+        from ..services.asn1_codec import Asn1Codec
+
         try:
             challenge_bytes = bytes.fromhex(euicc_challenge)
             challenge_b64 = base64.b64encode(challenge_bytes).decode("ascii")
         except Exception:
             challenge_b64 = euicc_challenge  # already base64
+        info1_b64 = Asn1Codec().encode_euicc_info1_b64(euicc_info1)
+        base = self._normalise_base(smdp_address) or self.default_base_url
         resp = await self.client.post(
-            "/gsma/rsp2/es9plus/initiateAuthentication",
+            f"{base}/gsma/rsp2/es9plus/initiateAuthentication",
             json={
                 "euiccChallenge": challenge_b64,
-                "euiccInfo1": euicc_info1,
+                "euiccInfo1": info1_b64,
                 "smdpAddress": smdp_address,
             },
         )
@@ -200,6 +221,7 @@ class SmdpClient:
         euicc_certificate: str,  # base64 DER
         eum_certificate: str | None = None,  # base64 DER
         euicc_signed1_raw_hex: str = "",  # hex of canonical EuiccSigned1 DER as the eUICC signed it
+        smdp_address: str = "",
     ) -> dict:
         """
         ES9+.AuthenticateClient — Complete authentication with eUICC proof.
@@ -243,8 +265,9 @@ class SmdpClient:
         bf38 = _tlv(0xBF38, a0)
         asr_b64 = base64.b64encode(bf38).decode("ascii")
 
+        base = self._normalise_base(smdp_address) or self.default_base_url
         resp = await self.client.post(
-            "/gsma/rsp2/es9plus/authenticateClient",
+            f"{base}/gsma/rsp2/es9plus/authenticateClient",
             json={
                 "transactionId": transaction_id,
                 "authenticateServerResponse": asr_b64,
@@ -285,25 +308,48 @@ class SmdpClient:
         transaction_id: str,
         euicc_signed2: dict,
         euicc_signature2: str,
+        euicc_signed2_raw_hex: str = "",
+        smdp_address: str = "",
     ) -> dict:
         """
         ES9+.GetBoundProfilePackage — Download the encrypted profile.
 
-        The IPA sends the eUICC's PrepareDownload response to get
-        the actual Bound Profile Package.
+        Per SGP.22 §5.6.3 the wire body is:
+          { transactionId, prepareDownloadResponse }
+        where `prepareDownloadResponse` is base64-encoded DER of the
+        ASN.1 PrepareDownloadResponse [33] CHOICE — NOT a JSON-shaped
+        nested object. Spec-compliant SM-DP+ implementations (ours,
+        sysmocom, vendor lab/prod) all base64-decode this string before
+        ASN.1-walking it; sending a dict trips a TypeError on their
+        decode path.
 
-        Per SGP.22 §5.6.3
+        Wire shape (hand-rolled like the AuthenticateClient envelope so
+        we forward the exact bytes the eUICC signed — re-encoding via
+        asn1tools can diverge in DER edge-cases):
+          BF21 ll                                -- PrepareDownloadResponse [33]
+            A0 ll                                -- downloadResponseOk (CHOICE alt 0)
+              <EuiccSigned2 raw DER>             -- 30-tagged SEQUENCE from eUICC
+              5F37 40 <64B raw r||s>             -- euiccSignature2 [APPLICATION 55]
         """
+        from ..services.asn1_codec import _tlv
+
+        es2_raw = bytes.fromhex(euicc_signed2_raw_hex) if euicc_signed2_raw_hex else b""
+        sig_bytes = (
+            bytes.fromhex(euicc_signature2)
+            if isinstance(euicc_signature2, str)
+            else (euicc_signature2 or b"")
+        )
+        sig_tlv = _tlv(0x5F37, sig_bytes)
+        a0 = _tlv(0xA0, es2_raw + sig_tlv)
+        bf21 = _tlv(0xBF21, a0)
+        pdr_b64 = base64.b64encode(bf21).decode("ascii")
+
+        base = self._normalise_base(smdp_address) or self.default_base_url
         resp = await self.client.post(
-            "/gsma/rsp2/es9plus/getBoundProfilePackage",
+            f"{base}/gsma/rsp2/es9plus/getBoundProfilePackage",
             json={
                 "transactionId": transaction_id,
-                "prepareDownloadResponse": {
-                    "downloadResponseOk": {
-                        "euiccSigned2": euicc_signed2,
-                        "euiccSignature2": euicc_signature2,
-                    }
-                },
+                "prepareDownloadResponse": pdr_b64,
             },
         )
         resp.raise_for_status()
@@ -325,13 +371,14 @@ class SmdpClient:
 
         After profile install/enable/disable/delete, the IPA sends
         the signed notification to the SM-DP+ for confirmation.
-
-        Per SGP.22 §5.6.4
+        Per SGP.22 §5.6.4 the notification goes to the SM-DP+ named
+        in the notification metadata (`notificationAddress`), which
+        may differ from the SM-DP+ that issued the profile.
         """
-        # Notification goes to the address in the notification metadata
+        base = self._normalise_base(notification_address) or self.default_base_url
         try:
             resp = await self.client.post(
-                "/gsma/rsp2/es9plus/handleNotification",
+                f"{base}/gsma/rsp2/es9plus/handleNotification",
                 json={
                     "pendingNotification": pending_notification,
                 },
@@ -350,14 +397,16 @@ class SmdpClient:
         self,
         transaction_id: str,
         cancel_response: dict,
+        smdp_address: str = "",
     ) -> dict:
         """
         ES9+.CancelSession — Forward session cancellation to SM-DP+.
 
         Per SGP.22 §5.6.5
         """
+        base = self._normalise_base(smdp_address) or self.default_base_url
         resp = await self.client.post(
-            "/gsma/rsp2/es9plus/cancelSession",
+            f"{base}/gsma/rsp2/es9plus/cancelSession",
             json={
                 "transactionId": transaction_id,
                 "cancelSessionResponse": cancel_response,
