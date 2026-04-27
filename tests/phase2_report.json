@@ -1,0 +1,368 @@
+{
+  "steps": [
+    {
+      "name": "Step 1: Download Profile A",
+      "matchingId": "CF9B-D40B-E610-53F9",
+      "downloadResult": {
+        "state": "profile_installed",
+        "transactionId": "384CE8357585457CA45F308B7D3DF5B0",
+        "error": "",
+        "steps": [
+          "step1: IPA -> eUICC: GetEuiccChallenge",
+          "step2: IPA -> eUICC: GetEuiccChallenge",
+          "step3: IPA -> eUICC: GetEuiccChallenge",
+          "step4: IPA -> eUICC: GetEuiccChallenge",
+          "step5: IPA -> eUICC: GetEuiccChallenge",
+          "step6: IPA -> eUICC: GetEuiccChallenge",
+          "step7: IPA -> eUICC: GetEuiccChallenge",
+          "step8: IPA -> eUICC: GetEuiccChallenge",
+          "complete: IPA -> eUICC: GetEuiccChallenge",
+          "step1: IPA -> eUICC: GetEuiccInfo1",
+          "step2: IPA -> eUICC: GetEuiccInfo1",
+          "step3: IPA -> eUICC: GetEuiccInfo1",
+          "step4: IPA -> eUICC: GetEuiccInfo1",
+          "step5: IPA -> eUICC: GetEuiccInfo1",
+          "step6: IPA -> eUICC: GetEuiccInfo1",
+          "step7: IPA -> eUICC: GetEuiccInfo1",
+          "step8: IPA -> eUICC: GetEuiccInfo1",
+          "complete: IPA -> eUICC: GetEuiccInfo1",
+          "step1: IPA -> SM-DP+: InitiateAuthentication",
+          "step2: IPA -> SM-DP+: InitiateAuthentication",
+          "step3: IPA -> SM-DP+: InitiateAuthentication",
+          "step4: IPA -> SM-DP+: InitiateAuthentication",
+          "step5: IPA -> SM-DP+: InitiateAuthentication",
+          "step6: IPA -> SM-DP+: InitiateAuthentication",
+          "step7: IPA -> SM-DP+: InitiateAuthentication",
+          "step8: IPA -> SM-DP+: InitiateAuthentication",
+          "complete: IPA -> SM-DP+: InitiateAuthentication",
+          "step1: IPA -> eUICC: AuthenticateServer",
+          "step2: IPA -> eUICC: AuthenticateServer",
+          "step3: IPA -> eUICC: AuthenticateServer",
+          "step4: IPA -> eUICC: AuthenticateServer",
+          "step5: IPA -> eUICC: AuthenticateServer",
+          "step6: IPA -> eUICC: AuthenticateServer",
+          "step7: IPA -> eUICC: AuthenticateServer",
+          "step8: IPA -> eUICC: AuthenticateServer",
+          "complete: IPA -> eUICC: AuthenticateServer",
+          "step1: IPA -> SM-DP+: AuthenticateClient",
+          "step2: IPA -> SM-DP+: AuthenticateClient",
+          "step3: IPA -> SM-DP+: AuthenticateClient",
+          "step4: IPA -> SM-DP+: AuthenticateClient",
+          "step5: IPA -> SM-DP+: AuthenticateClient",
+          "step6: IPA -> SM-DP+: AuthenticateClient",
+          "step7: IPA -> SM-DP+: AuthenticateClient",
+          "step8: IPA -> SM-DP+: AuthenticateClient",
+          "complete: IPA -> SM-DP+: AuthenticateClient",
+          "step1: IPA -> eUICC: PrepareDownload",
+          "step2: IPA -> eUICC: PrepareDownload",
+          "step3: IPA -> eUICC: PrepareDownload",
+          "step4: IPA -> eUICC: PrepareDownload",
+          "step5: IPA -> eUICC: PrepareDownload",
+          "step6: IPA -> eUICC: PrepareDownload",
+          "step7: IPA -> eUICC: PrepareDownload",
+          "step8: IPA -> eUICC: PrepareDownload",
+          "complete: IPA -> eUICC: PrepareDownload",
+          "step1: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step2: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step3: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step4: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step5: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step6: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step7: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step8: IPA -> SM-DP+: GetBoundProfilePackage",
+          "complete: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step1: IPA -> eUICC: LoadBoundProfilePackage",
+          "step2: IPA -> eUICC: LoadBoundProfilePackage",
+          "step3: IPA -> eUICC: LoadBoundProfilePackage",
+          "step4: IPA -> eUICC: LoadBoundProfilePackage",
+          "step5: IPA -> eUICC: LoadBoundProfilePackage",
+          "step6: IPA -> eUICC: LoadBoundProfilePackage",
+          "step7: IPA -> eUICC: LoadBoundProfilePackage",
+          "step8: IPA -> eUICC: LoadBoundProfilePackage",
+          "complete: IPA -> eUICC: LoadBoundProfilePackage",
+          "step1: Profile download completed successfully",
+          "step2: Profile download completed successfully",
+          "step3: Profile download completed successfully",
+          "step4: Profile download completed successfully",
+          "step5: Profile download completed successfully",
+          "step6: Profile download completed successfully",
+          "step7: Profile download completed successfully",
+          "step8: Profile download completed successfully",
+          "complete: Profile download completed successfully"
+        ]
+      },
+      "profilesAfter": {
+        "profileInfoListOk": [
+          {
+            "iccid": "7e2e7bc4835184e86787",
+            "isdpAid": "a0000005591010ffffffff8900000100",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Step 2: Download Profile B",
+      "matchingId": "819D-501E-4AFA-CE6E",
+      "downloadResult": {
+        "state": "profile_installed",
+        "transactionId": "E0C8EC2536894BA5A49826864B645AE6",
+        "error": "",
+        "steps": [
+          "step1: IPA -> eUICC: GetEuiccChallenge",
+          "step2: IPA -> eUICC: GetEuiccChallenge",
+          "step3: IPA -> eUICC: GetEuiccChallenge",
+          "step4: IPA -> eUICC: GetEuiccChallenge",
+          "step5: IPA -> eUICC: GetEuiccChallenge",
+          "step6: IPA -> eUICC: GetEuiccChallenge",
+          "step7: IPA -> eUICC: GetEuiccChallenge",
+          "step8: IPA -> eUICC: GetEuiccChallenge",
+          "complete: IPA -> eUICC: GetEuiccChallenge",
+          "step1: IPA -> eUICC: GetEuiccInfo1",
+          "step2: IPA -> eUICC: GetEuiccInfo1",
+          "step3: IPA -> eUICC: GetEuiccInfo1",
+          "step4: IPA -> eUICC: GetEuiccInfo1",
+          "step5: IPA -> eUICC: GetEuiccInfo1",
+          "step6: IPA -> eUICC: GetEuiccInfo1",
+          "step7: IPA -> eUICC: GetEuiccInfo1",
+          "step8: IPA -> eUICC: GetEuiccInfo1",
+          "complete: IPA -> eUICC: GetEuiccInfo1",
+          "step1: IPA -> SM-DP+: InitiateAuthentication",
+          "step2: IPA -> SM-DP+: InitiateAuthentication",
+          "step3: IPA -> SM-DP+: InitiateAuthentication",
+          "step4: IPA -> SM-DP+: InitiateAuthentication",
+          "step5: IPA -> SM-DP+: InitiateAuthentication",
+          "step6: IPA -> SM-DP+: InitiateAuthentication",
+          "step7: IPA -> SM-DP+: InitiateAuthentication",
+          "step8: IPA -> SM-DP+: InitiateAuthentication",
+          "complete: IPA -> SM-DP+: InitiateAuthentication",
+          "step1: IPA -> eUICC: AuthenticateServer",
+          "step2: IPA -> eUICC: AuthenticateServer",
+          "step3: IPA -> eUICC: AuthenticateServer",
+          "step4: IPA -> eUICC: AuthenticateServer",
+          "step5: IPA -> eUICC: AuthenticateServer",
+          "step6: IPA -> eUICC: AuthenticateServer",
+          "step7: IPA -> eUICC: AuthenticateServer",
+          "step8: IPA -> eUICC: AuthenticateServer",
+          "complete: IPA -> eUICC: AuthenticateServer",
+          "step1: IPA -> SM-DP+: AuthenticateClient",
+          "step2: IPA -> SM-DP+: AuthenticateClient",
+          "step3: IPA -> SM-DP+: AuthenticateClient",
+          "step4: IPA -> SM-DP+: AuthenticateClient",
+          "step5: IPA -> SM-DP+: AuthenticateClient",
+          "step6: IPA -> SM-DP+: AuthenticateClient",
+          "step7: IPA -> SM-DP+: AuthenticateClient",
+          "step8: IPA -> SM-DP+: AuthenticateClient",
+          "complete: IPA -> SM-DP+: AuthenticateClient",
+          "step1: IPA -> eUICC: PrepareDownload",
+          "step2: IPA -> eUICC: PrepareDownload",
+          "step3: IPA -> eUICC: PrepareDownload",
+          "step4: IPA -> eUICC: PrepareDownload",
+          "step5: IPA -> eUICC: PrepareDownload",
+          "step6: IPA -> eUICC: PrepareDownload",
+          "step7: IPA -> eUICC: PrepareDownload",
+          "step8: IPA -> eUICC: PrepareDownload",
+          "complete: IPA -> eUICC: PrepareDownload",
+          "step1: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step2: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step3: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step4: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step5: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step6: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step7: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step8: IPA -> SM-DP+: GetBoundProfilePackage",
+          "complete: IPA -> SM-DP+: GetBoundProfilePackage",
+          "step1: IPA -> eUICC: LoadBoundProfilePackage",
+          "step2: IPA -> eUICC: LoadBoundProfilePackage",
+          "step3: IPA -> eUICC: LoadBoundProfilePackage",
+          "step4: IPA -> eUICC: LoadBoundProfilePackage",
+          "step5: IPA -> eUICC: LoadBoundProfilePackage",
+          "step6: IPA -> eUICC: LoadBoundProfilePackage",
+          "step7: IPA -> eUICC: LoadBoundProfilePackage",
+          "step8: IPA -> eUICC: LoadBoundProfilePackage",
+          "complete: IPA -> eUICC: LoadBoundProfilePackage",
+          "step1: Profile download completed successfully",
+          "step2: Profile download completed successfully",
+          "step3: Profile download completed successfully",
+          "step4: Profile download completed successfully",
+          "step5: Profile download completed successfully",
+          "step6: Profile download completed successfully",
+          "step7: Profile download completed successfully",
+          "step8: Profile download completed successfully",
+          "complete: Profile download completed successfully"
+        ]
+      },
+      "profilesAfter": {
+        "profileInfoListOk": [
+          {
+            "iccid": "7e2e7bc4835184e86787",
+            "isdpAid": "a0000005591010ffffffff8900000100",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          },
+          {
+            "iccid": "8263f5b10f18ea7a31b9",
+            "isdpAid": "a0000005591010ffffffff8900000200",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Step 3: List Profiles (verify 2 exist)",
+      "iccidA": "7e2e7bc4835184e86787",
+      "iccidB": "8263f5b10f18ea7a31b9",
+      "profilesCount": 2,
+      "profiles": {
+        "profileInfoListOk": [
+          {
+            "iccid": "7e2e7bc4835184e86787",
+            "isdpAid": "a0000005591010ffffffff8900000100",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          },
+          {
+            "iccid": "8263f5b10f18ea7a31b9",
+            "isdpAid": "a0000005591010ffffffff8900000200",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Step 4: Add eIM Tahwol",
+      "queue": "queue_id=203 pkg=PHASE2-69EF8CC163791",
+      "addEimParams": {
+        "eimId": "eimTahwol",
+        "eimIdType": 2,
+        "counterValue": 0,
+        "associationToken": 1,
+        "publicKeyPath": "/var/www/eim/storage/app/eim/keys/eimtahwol_public.pem",
+        "tlsCertPath": "/var/www/eim/storage/app/eim/certs/eimtahwol_ci_signed.crt",
+        "euiccCiPKId": "C0BC70BA36929D43B467FF57570530E57AB8FCD8"
+      },
+      "eimsAfter": {
+        "eimConfigurationDataList": [
+          {
+            "eimId": "eimserver.connectxiot.com",
+            "eimFqdn": "eimserver.connectxiot.com",
+            "counterValue": 1,
+            "associationToken": 0,
+            "eimSupportedProtocol": 0
+          },
+          {
+            "eimId": "eimTahwol",
+            "eimFqdn": "",
+            "counterValue": 0,
+            "associationToken": 3671523492,
+            "eimSupportedProtocol": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Step 5: List eIMs (verify both exist)",
+      "eimsCount": 2,
+      "eims": {
+        "eimConfigurationDataList": [
+          {
+            "eimId": "eimserver.connectxiot.com",
+            "eimFqdn": "eimserver.connectxiot.com",
+            "counterValue": 1,
+            "associationToken": 0,
+            "eimSupportedProtocol": 0
+          },
+          {
+            "eimId": "eimTahwol",
+            "eimFqdn": "",
+            "counterValue": 0,
+            "associationToken": 3671523492,
+            "eimSupportedProtocol": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Step 6: Remove eIM connectxiot.com (keep only Tahwol)",
+      "queue": "queue_id=204 pkg=PHASE2-69EF8CC29B68A",
+      "eimsAfter": {
+        "eimConfigurationDataList": [
+          {
+            "eimId": "eimTahwol",
+            "eimFqdn": "",
+            "counterValue": 0,
+            "associationToken": 3671523492,
+            "eimSupportedProtocol": 0
+          }
+        ]
+      },
+      "eimsCount": 1
+    },
+    {
+      "name": "Step 7: Queue Enable for Profile B (via Tahwol)",
+      "queue": "queue_id=205 pkg=PHASE2-69EF8CC3A30EC",
+      "targetIccid": "8263f5b10f18ea7a31b9",
+      "profilesAfter": {
+        "profileInfoListOk": [
+          {
+            "iccid": "7e2e7bc4835184e86787",
+            "isdpAid": "a0000005591010ffffffff8900000100",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          },
+          {
+            "iccid": "8263f5b10f18ea7a31b9",
+            "isdpAid": "a0000005591010ffffffff8900000200",
+            "profileState": 1,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "Step 8: List Profiles (validate enabled state)",
+      "expectedEnabled": "8263f5b10f18ea7a31b9",
+      "actualEnabled": "8263f5b10f18ea7a31b9",
+      "profiles": {
+        "profileInfoListOk": [
+          {
+            "iccid": "7e2e7bc4835184e86787",
+            "isdpAid": "a0000005591010ffffffff8900000100",
+            "profileState": 0,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          },
+          {
+            "iccid": "8263f5b10f18ea7a31b9",
+            "isdpAid": "a0000005591010ffffffff8900000200",
+            "profileState": 1,
+            "profileName": "Downloaded Profile",
+            "serviceProviderName": "",
+            "profileClass": 2
+          }
+        ]
+      },
+      "pass": true
+    }
+  ],
+  "eid": "263B5184245F97B1F42F31AFA04F3CA8",
+  "started": "2026-04-27T16:20:11+00:00"
+}
