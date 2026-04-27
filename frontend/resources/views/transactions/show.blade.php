@@ -42,58 +42,61 @@
         'run_op'       => $transaction->operation,
     ];
 
-    // Map (endpoint with {eid} placeholder) -> [interface, function, GSMA spec §].
-    // SGP.22 v3.1 (consumer RSP) covers ES9+, ES10b, ES10c.
-    // SGP.32 v1.2 (M2M IoT) covers ESipa, ES10b-IoT, ESep.
+    // Map (endpoint with {eid} placeholder) -> [interface, GSMA procedure name, spec ref].
+    // Procedure labels follow GSMA SGP.22 v3 / SGP.32 v1.2 user-facing names
+    // (e.g. "Retrieve eIM Package" rather than the wire-level function name
+    // "GetEimPackage"). Capitalisation of "eIM" / "eUICC" / "SM-DP+" matches
+    // the spec.
     $specMap = [
         // ESipa — IPA ↔ eIM (SGP.32 §6.4.1)
-        'POST /gsma/rsp2/esipa/getEimPackage'           => ['ESipa', 'GetEimPackage',           'SGP.32 §6.4.1.5'],
-        'POST /gsma/rsp2/esipa/provideEimPackageResult' => ['ESipa', 'ProvideEimPackageResult', 'SGP.32 §6.4.1.6'],
-        'POST /gsma/rsp2/esipa/initiateAuthentication'  => ['ESipa', 'InitiateAuthentication',  'SGP.32 §6.4.1.1'],
-        'POST /gsma/rsp2/esipa/authenticateClient'      => ['ESipa', 'AuthenticateClient',      'SGP.32 §6.4.1.2'],
-        'POST /gsma/rsp2/esipa/getBoundProfilePackage'  => ['ESipa', 'GetBoundProfilePackage',  'SGP.32 §6.4.1.3'],
-        'POST /gsma/rsp2/esipa/handleNotification'      => ['ESipa', 'HandleNotification',      'SGP.32 §6.4.1.4'],
-        'POST /gsma/rsp2/esipa/cancelSession'           => ['ESipa', 'CancelSession',           'SGP.32 §6.4.1.7'],
+        'POST /gsma/rsp2/esipa/getEimPackage'           => ['ESipa', 'Retrieve eIM Package',          'SGP.32 §6.4.1.5'],
+        'POST /gsma/rsp2/esipa/provideEimPackageResult' => ['ESipa', 'Provide eIM Package Result',    'SGP.32 §6.4.1.6'],
+        'POST /gsma/rsp2/esipa/initiateAuthentication'  => ['ESipa', 'Initiate Authentication',       'SGP.32 §6.4.1.1'],
+        'POST /gsma/rsp2/esipa/authenticateClient'      => ['ESipa', 'Authenticate Client',           'SGP.32 §6.4.1.2'],
+        'POST /gsma/rsp2/esipa/getBoundProfilePackage'  => ['ESipa', 'Get Bound Profile Package',     'SGP.32 §6.4.1.3'],
+        'POST /gsma/rsp2/esipa/handleNotification'      => ['ESipa', 'Handle Notification',           'SGP.32 §6.4.1.4'],
+        'POST /gsma/rsp2/esipa/cancelSession'           => ['ESipa', 'Cancel Session',                'SGP.32 §6.4.1.7'],
 
         // ES9+ — IPA ↔ SM-DP+ (SGP.22 §5.6)
-        'POST /gsma/rsp2/es9plus/initiateAuthentication' => ['ES9+', 'InitiateAuthentication',  'SGP.22 §5.6.1'],
-        'POST /gsma/rsp2/es9plus/authenticateClient'     => ['ES9+', 'AuthenticateClient',      'SGP.22 §5.6.2'],
-        'POST /gsma/rsp2/es9plus/getBoundProfilePackage' => ['ES9+', 'GetBoundProfilePackage',  'SGP.22 §5.6.3'],
-        'POST /gsma/rsp2/es9plus/handleNotification'     => ['ES9+', 'HandleNotification',     'SGP.22 §5.6.4'],
-        'POST /gsma/rsp2/es9plus/cancelSession'          => ['ES9+', 'CancelSession',          'SGP.22 §5.6.5'],
+        'POST /gsma/rsp2/es9plus/initiateAuthentication' => ['ES9+', 'Initiate Authentication',       'SGP.22 §5.6.1'],
+        'POST /gsma/rsp2/es9plus/authenticateClient'     => ['ES9+', 'Authenticate Client',           'SGP.22 §5.6.2'],
+        'POST /gsma/rsp2/es9plus/getBoundProfilePackage' => ['ES9+', 'Get Bound Profile Package',     'SGP.22 §5.6.3'],
+        'POST /gsma/rsp2/es9plus/handleNotification'     => ['ES9+', 'Handle Notification',           'SGP.22 §5.6.4'],
+        'POST /gsma/rsp2/es9plus/cancelSession'          => ['ES9+', 'Cancel Session',                'SGP.22 §5.6.5'],
 
         // ES10b — IPA ↔ eUICC, profile download / authentication (SGP.22 §5.7)
-        'GET  /api/es10/{eid}/euicc-info'           => ['ES10b', 'GetEUICCInfo1/2',          'SGP.22 §5.7.3/4'],
-        'POST /api/es10/{eid}/euicc-challenge'      => ['ES10b', 'GetEuiccChallenge',        'SGP.22 §5.7.6'],
-        'POST /api/es10/{eid}/authenticate-server'  => ['ES10b', 'AuthenticateServer',       'SGP.22 §5.7.13'],
-        'POST /api/es10/{eid}/prepare-download'     => ['ES10b', 'PrepareDownload',          'SGP.22 §5.7.5'],
-        'POST /api/es10/{eid}/load-bound-package'   => ['ES10b', 'LoadBoundProfilePackage',  'SGP.22 §5.5.4'],
-        'GET  /api/es10/{eid}/notifications'        => ['ES10b', 'ListNotification',         'SGP.22 §5.7.9'],
+        'GET  /api/es10/{eid}/euicc-info'           => ['ES10b', 'Get eUICC Info',                  'SGP.22 §5.7.3/4'],
+        'POST /api/es10/{eid}/euicc-challenge'      => ['ES10b', 'Get eUICC Challenge',             'SGP.22 §5.7.6'],
+        'POST /api/es10/{eid}/authenticate-server'  => ['ES10b', 'Authenticate Server',             'SGP.22 §5.7.13'],
+        'POST /api/es10/{eid}/prepare-download'     => ['ES10b', 'Prepare Download',                'SGP.22 §5.7.5'],
+        'POST /api/es10/{eid}/load-bpp'             => ['ES10b', 'Load Bound Profile Package',      'SGP.22 §5.5.4'],
+        'POST /api/es10/{eid}/load-bound-package'   => ['ES10b', 'Load Bound Profile Package',      'SGP.22 §5.5.4'],
+        'GET  /api/es10/{eid}/notifications'        => ['ES10b', 'List Notification',               'SGP.22 §5.7.9'],
 
         // ES10c — IPA ↔ eUICC, profile state + general info (SGP.22 §5.7)
-        'GET  /api/es10/{eid}/profiles'             => ['ES10c', 'GetProfilesInfo',          'SGP.22 §5.7.15'],
-        'GET  /api/es10/{eid}/eid'                  => ['ES10c', 'GetEID',                   'SGP.22 §5.7.20'],
-        'POST /api/es10/{eid}/enable'               => ['ES10c', 'EnableProfile',            'SGP.22 §5.7.16'],
-        'POST /api/es10/{eid}/disable'              => ['ES10c', 'DisableProfile',           'SGP.22 §5.7.17'],
-        'POST /api/es10/{eid}/delete'               => ['ES10c', 'DeleteProfile',            'SGP.22 §5.7.18'],
+        'GET  /api/es10/{eid}/profiles'             => ['ES10c', 'Get Profiles Info',               'SGP.22 §5.7.15'],
+        'GET  /api/es10/{eid}/eid'                  => ['ES10c', 'Get EID',                         'SGP.22 §5.7.20'],
+        'POST /api/es10/{eid}/enable'               => ['ES10c', 'Enable Profile',                  'SGP.22 §5.7.16'],
+        'POST /api/es10/{eid}/disable'              => ['ES10c', 'Disable Profile',                 'SGP.22 §5.7.17'],
+        'POST /api/es10/{eid}/delete'               => ['ES10c', 'Delete Profile',                  'SGP.22 §5.7.18'],
 
         // ES10b-IoT — IPA ↔ eUICC, eIM management + ESep relay (SGP.32 §5.9)
-        'POST /api/es10/{eid}/euicc-package'        => ['ES10b-IoT', 'LoadEuiccPackage',     'SGP.32 §5.9.2'],
-        'GET  /api/es10/{eid}/eim-config'           => ['ES10b-IoT', 'GetEimConfigurationData', 'SGP.32 §5.9.5'],
-        'POST /api/es10/{eid}/add-eim'              => ['ES10b-IoT', 'AddEim',               'SGP.32 §5.9.7'],
-        'POST /api/es10/{eid}/delete-eim'           => ['ES10b-IoT', 'DeleteEim',            'SGP.32 §5.9.8'],
-        'POST /api/es10/{eid}/update-eim'           => ['ES10b-IoT', 'UpdateEim',            'SGP.32 §5.9.9'],
-        'GET  /api/es10/{eid}/list-eim'             => ['ES10b-IoT', 'ListEim',              'SGP.32 §5.9.6'],
-        'GET  /api/es10/{eid}/certs'                => ['ES10b-IoT', 'GetCerts',             'SGP.32 §5.9.10'],
+        'POST /api/es10/{eid}/euicc-package'        => ['ES10b-IoT', 'Load eUICC Package',          'SGP.32 §5.9.2'],
+        'GET  /api/es10/{eid}/eim-config'           => ['ES10b-IoT', 'Get eIM Configuration Data',  'SGP.32 §5.9.5'],
+        'POST /api/es10/{eid}/add-eim'              => ['ES10b-IoT', 'Add eIM',                     'SGP.32 §5.9.7'],
+        'POST /api/es10/{eid}/delete-eim'           => ['ES10b-IoT', 'Delete eIM',                  'SGP.32 §5.9.8'],
+        'POST /api/es10/{eid}/update-eim'           => ['ES10b-IoT', 'Update eIM',                  'SGP.32 §5.9.9'],
+        'GET  /api/es10/{eid}/list-eim'             => ['ES10b-IoT', 'List eIM',                    'SGP.32 §5.9.6'],
+        'GET  /api/es10/{eid}/certs'                => ['ES10b-IoT', 'Get Certificates',            'SGP.32 §5.9.10'],
 
         // Internal endpoints (not GSMA-spec) — Dashboard ↔ sims orchestration
-        'POST /api/management/euicc'                       => ['Internal', 'PushDevice',     ''],
-        'POST /api/ipa/devices'                            => ['Internal', 'RegisterDevice', ''],
-        'POST /api/ipa/esipa/{eid}/poll-once'              => ['Internal', 'TriggerEsipaPoll',     ''],
-        'POST /api/ipa/esipa/{eid}/start-polling'          => ['Internal', 'StartEsipaPolling',    ''],
-        'POST /api/ipa/esipa/{eid}/stop-polling'           => ['Internal', 'StopEsipaPolling',     ''],
-        'POST /api/ipa/download/start'                     => ['Internal', 'TriggerProfileDownload', ''],
-        'POST /api/ipa/download/cancel'                    => ['Internal', 'CancelDownload',      ''],
+        'POST /api/management/euicc'                       => ['Internal', 'Push Device to eUICC sim',  ''],
+        'POST /api/ipa/devices'                            => ['Internal', 'Register Device with IPA', ''],
+        'POST /api/ipa/esipa/{eid}/poll-once'              => ['Internal', 'Trigger ESipa Poll',     ''],
+        'POST /api/ipa/esipa/{eid}/start-polling'          => ['Internal', 'Start ESipa Polling',    ''],
+        'POST /api/ipa/esipa/{eid}/stop-polling'           => ['Internal', 'Stop ESipa Polling',     ''],
+        'POST /api/ipa/download/start'                     => ['Internal', 'Trigger Profile Download', ''],
+        'POST /api/ipa/download/cancel'                    => ['Internal', 'Cancel Download',       ''],
     ];
 
     // Resolve a step's spec triple. Normalises method+endpoint into a key
