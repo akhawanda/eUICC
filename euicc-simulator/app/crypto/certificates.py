@@ -23,6 +23,17 @@ from cryptography.hazmat.primitives.asymmetric.ec import (
     SECP256R1,
 )
 
+# GSMA SGP.26 v1.5 NIST P-256 test cert package — public CI/EUM with
+# published private keys, designed so any test eUICC manufacturer can
+# sign chains under it. Lab/test SM-DP+ deployments (osmo-smdpp,
+# sysmocom test, vendor labs) accept eUICCs rooted in this chain.
+SGP26_DIR = Path(__file__).parent.parent.parent / "certs" / "sgp26_nist"
+# EUM cert's name constraint (`Permitted: O=RSP Test EUM, serialNumber=89049032`)
+# requires the eUICC subject's serialNumber attribute to start with this
+# IIN. EIDs not under this prefix can't legally be issued under the
+# SGP.26 EUM, so we fall back to the locally-generated chain for them.
+SGP26_EID_PREFIX = "89049032"
+
 
 @dataclass
 class KeyPairBundle:
@@ -52,13 +63,86 @@ class CertificateInfrastructure:
         self.euicc: KeyPairBundle | None = None
 
     def initialize(self, eid: str, force_regenerate: bool = False) -> None:
-        """Generate or load the full certificate chain."""
-        ci_key_path = self.certs_dir / "ci_private.pem"
+        """Generate or load the full certificate chain.
 
-        if ci_key_path.exists() and not force_regenerate:
+        Two modes:
+        - SGP.26 mode (preferred when the EID falls under the SGP.26 EUM's
+          name-constraint prefix and the SGP.26 cert package is available):
+          load the public SGP.26 NIST CI + EUM, issue the eUICC end-entity
+          cert under them. This makes the chain accepted by any lab/test
+          SM-DP+ that trusts SGP.26 NIST TestCI.
+        - Legacy mode: locally-generate a synthetic CI/EUM/eUICC chain
+          rooted in `ConnectX-GSMA-CI-Test`. Only our own SM-DP+ trusts it.
+        """
+        sgp26 = (
+            self._load_sgp26_chain()
+            if eid.upper().startswith(SGP26_EID_PREFIX)
+            else None
+        )
+        ci_key_path = self.certs_dir / "ci_private.pem"
+        euicc_key_path = self.certs_dir / "euicc_private.pem"
+
+        if sgp26 is not None:
+            # SGP.26 chain — CI/EUM live in the shared package, only the
+            # eUICC end-entity is per-EID.
+            self.ci, self.eum = sgp26
+            reuse_euicc = (
+                euicc_key_path.exists()
+                and not force_regenerate
+                and self._euicc_cert_chains_to(self.eum)
+            )
+            if reuse_euicc:
+                self.euicc = self._load_key_pair("euicc")
+            else:
+                # Mode-switched (legacy → SGP.26) or first run; reissue.
+                self.euicc = self._generate_euicc_cert(self.eum, eid)
+                self._save_key_pair("euicc", self.euicc)
+        elif ci_key_path.exists() and not force_regenerate:
             self._load_existing(eid)
         else:
             self._generate_full_chain(eid)
+
+    def _euicc_cert_chains_to(self, eum: "KeyPairBundle") -> bool:
+        """Whether the on-disk eUICC cert was issued by the given EUM (by SKI).
+        Used to detect chain-mode switches that require reissuing the eUICC
+        end-entity cert."""
+        cert_path = self.certs_dir / "euicc_cert.pem"
+        if not cert_path.exists():
+            return False
+        try:
+            cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
+            aki = cert.extensions.get_extension_for_class(x509.AuthorityKeyIdentifier)
+            return aki.value.key_identifier == eum.ski
+        except Exception:
+            return False
+
+    @staticmethod
+    def _load_sgp26_chain() -> tuple["KeyPairBundle", "KeyPairBundle"] | None:
+        """Load the SGP.26 NIST CI + EUM bundle from `certs/sgp26_nist/`,
+        or return None if any of the four expected files is missing."""
+        ci_cert_p = SGP26_DIR / "CERT_CI_ECDSA_NIST.pem"
+        ci_key_p = SGP26_DIR / "SK_CI_ECDSA_NIST.pem"
+        eum_cert_p = SGP26_DIR / "CERT_EUM_ECDSA_NIST.der"
+        eum_key_p = SGP26_DIR / "SK_EUM_ECDSA_NIST.pem"
+        if not all(p.exists() for p in (ci_cert_p, ci_key_p, eum_cert_p, eum_key_p)):
+            return None
+
+        ci_cert = x509.load_pem_x509_certificate(ci_cert_p.read_bytes())
+        ci_key = serialization.load_pem_private_key(ci_key_p.read_bytes(), password=None)
+        eum_cert = x509.load_der_x509_certificate(eum_cert_p.read_bytes())
+        eum_key = serialization.load_pem_private_key(eum_key_p.read_bytes(), password=None)
+
+        ci_ski = ci_cert.extensions.get_extension_for_class(
+            x509.SubjectKeyIdentifier
+        ).value.digest
+        eum_ski = eum_cert.extensions.get_extension_for_class(
+            x509.SubjectKeyIdentifier
+        ).value.digest
+
+        return (
+            KeyPairBundle(private_key=ci_key, certificate=ci_cert, ski=ci_ski),
+            KeyPairBundle(private_key=eum_key, certificate=eum_cert, ski=eum_ski),
+        )
 
     def _generate_full_chain(self, eid: str) -> None:
         """Generate CI -> EUM -> eUICC certificate chain from scratch."""
@@ -197,16 +281,34 @@ class CertificateInfrastructure:
         - Subject with EID in serialNumber field
         - Key usage: digitalSignature + keyAgreement
         - No basicConstraints (end-entity)
+
+        When the EUM is the SGP.26 test EUM, the subject DN must extend
+        its `Permitted: O=RSP Test EUM, serialNumber=89049032` name
+        constraint, so we mirror the canonical SGP.26 sample eUICC cert
+        subject (`C=ES, O=RSP Test EUM, serialNumber=<eid>, CN=Test eUICC`).
         """
         private_key = ec.generate_private_key(SECP256R1())
 
-        subject = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, f"eUICC-{eid[-8:]}"),
-            x509.NameAttribute(NameOID.SERIAL_NUMBER, eid),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "ConnectX IoT"),
-            x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "eUICC Simulator"),
-            x509.NameAttribute(NameOID.COUNTRY_NAME, "AE"),
-        ])
+        eum_subject = eum.certificate.subject
+        is_sgp26 = any(
+            a.oid == NameOID.ORGANIZATION_NAME and a.value == "RSP Test EUM"
+            for a in eum_subject
+        )
+        if is_sgp26:
+            subject = x509.Name([
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "ES"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "RSP Test EUM"),
+                x509.NameAttribute(NameOID.SERIAL_NUMBER, eid),
+                x509.NameAttribute(NameOID.COMMON_NAME, f"eUICC-{eid[-8:]}"),
+            ])
+        else:
+            subject = x509.Name([
+                x509.NameAttribute(NameOID.COMMON_NAME, f"eUICC-{eid[-8:]}"),
+                x509.NameAttribute(NameOID.SERIAL_NUMBER, eid),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "ConnectX IoT"),
+                x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, "eUICC Simulator"),
+                x509.NameAttribute(NameOID.COUNTRY_NAME, "AE"),
+            ])
 
         ski = x509.SubjectKeyIdentifier.from_public_key(private_key.public_key())
         aki = x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(
